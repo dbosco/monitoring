@@ -1,0 +1,3 @@
+[submodule "dimple_utils"]
+	path = dimple_utils
+	url = git@github.com:dbosco/dimple_utils.git
