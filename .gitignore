@@ -1,4 +1,7 @@
 **/t
+**/*dont_commit*
+**/*target*
+**/*workdir*
 
 # Python
 __pycache__/

@@ -1,0 +1,26 @@
+# Runtime Dockerfile for Ranger Monitoring
+# This image is minimal and expects volumes to be mounted at runtime
+
+FROM eclipse-temurin:21-jre-alpine
+
+# Install minimal tools
+RUN apk add --no-cache bash
+
+# Set working directory
+WORKDIR /app
+
+# Create cache directories and keystore directory
+RUN mkdir -p /app/cache/policycache /app/cache/temp-cache /app/keystore
+
+# Set environment variables
+# ENV JAVA_OPTS="-Dranger.service.name=hive \
+#     -Dranger.service.host=localhost \
+#     -Dranger.service.port=6080 \
+#     -Dranger.service.user=ranger \
+#     -Dranger.service.password=ranger \
+#     -Dranger.policy.cache.dir=/tmp/ranger-policy-cache \
+#     -Dranger.temp.cache.dir=/tmp/ranger-temp-cache \
+#     -Dranger.audit.solr.urls=http://localhost:6083/solr/ranger_audits"
+
+# Default command - expects volumes to be mounted
+CMD ["java", "-cp", "/app/target/classes:/app/ranger-conf:/app/lib/*", "com.privacera.ranger.monitoring.DummyAuthorizer"]
