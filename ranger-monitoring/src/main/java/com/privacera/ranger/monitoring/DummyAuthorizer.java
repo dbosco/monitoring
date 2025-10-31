@@ -207,7 +207,7 @@ public class DummyAuthorizer {
         // groups.add("admin");
         
         String database = "db1";
-        String table = "table1";
+        String table = "table2";
         String column = "col1";
         
         // Use command line arguments if provided
