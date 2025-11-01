@@ -70,6 +70,20 @@ DOCKER_NETWORK_NAME=my-custom-network docker-compose up -d
   - Password: `admin`
 - **Purpose**: Metrics visualization and dashboards
 
+**Set Mount Everest Dashboard as Default Home:**
+To show the "Mount Everest" dashboard when accessing the root URL:
+1. Log in to Grafana (http://localhost:3000)
+2. Click on your user icon (bottom left) → **Preferences**
+3. Under **Home Dashboard**, select **Mount Everest** from the dropdown
+4. Click **Save**
+
+Alternatively, use the API (replace `<your-password>` with your Grafana admin password):
+```bash
+curl -X PUT "http://admin:<your-password>@localhost:3000/api/user/preferences" \
+  -H "Content-Type: application/json" \
+  -d '{"homeDashboardUID":"mount-everest"}'
+```
+
 ### Jaeger
 - **Ports**:
   - `16686` - Jaeger UI (http://localhost:16686)
