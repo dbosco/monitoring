@@ -10,4 +10,4 @@
 
 ./run_docker.sh build
 
-./run_docker.sh package && ./run_docker.sh build-runtime && ./run_docker.sh run-monitoring
+./run_docker.sh package && ./run_docker.sh build-runtime && ./run_docker.sh run-monitoring -d &&  docker logs ranger-monitoring-app -f 

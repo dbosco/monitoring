@@ -167,6 +167,10 @@ main() {
         print_info "Classpath: $CLASSPATH"
     fi
     
+    # Create logs directory if it doesn't exist
+    LOGS_DIR="$PROJECT_DIR/logs"
+    mkdir -p "$LOGS_DIR"
+    
     # Set Java system properties for Ranger configuration
     JAVA_OPTS="-Dranger.service.name=hive"
     JAVA_OPTS="$JAVA_OPTS -Dranger.service.host=localhost"
@@ -177,12 +181,14 @@ main() {
     JAVA_OPTS="$JAVA_OPTS -Dranger.temp.cache.dir=/tmp/ranger-temp-cache"
     JAVA_OPTS="$JAVA_OPTS -Dranger.audit.solr.urls=http://localhost:6083/solr/ranger_audits"
     
-    # Add Ranger configuration directory to classpath
-    JAVA_OPTS="$JAVA_OPTS -Dlog4j.configuration=file:$RANGER_CONF_DIR/ranger-hive-privacera_hive-security.xml"
-    
-    # Add debugging properties
-    JAVA_OPTS="$JAVA_OPTS -Djava.util.logging.config.file=$RANGER_CONF_DIR/ranger-hive-privacera_hive-security.xml"
-    JAVA_OPTS="$JAVA_OPTS -Dlog4j.debug=true"
+    # Logging configuration - use java.util.logging since log4j jars are not available
+    if [ -f "$RANGER_CONF_DIR/logging.properties" ]; then
+        JAVA_OPTS="$JAVA_OPTS -Djava.util.logging.config.file=$RANGER_CONF_DIR/logging.properties"
+    elif [ -f "$RANGER_CONF_DIR/log4j.properties" ]; then
+        # Try log4j if available (but won't work without log4j jars)
+        JAVA_OPTS="$JAVA_OPTS -Dlog4j.configuration=file:$RANGER_CONF_DIR/log4j.properties"
+    fi
+    JAVA_OPTS="$JAVA_OPTS -Dranger.monitoring.logs.dir=$LOGS_DIR"
     JAVA_OPTS="$JAVA_OPTS -Djava.awt.headless=true"
     
     # Run tests or main class

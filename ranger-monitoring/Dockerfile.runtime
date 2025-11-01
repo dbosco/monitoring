@@ -10,7 +10,15 @@ RUN apk add --no-cache bash
 WORKDIR /app
 
 # Create cache directories and keystore directory
-RUN mkdir -p /app/cache/policycache /app/cache/temp-cache /app/keystore
+RUN mkdir -p /app/cache/policycache /app/cache/temp-cache /app/keystore /app/logs
+
+# Create ranger-monitoring user (non-root for security)
+RUN addgroup -S ranger-monitoring && \
+    adduser -S -G ranger-monitoring -u 1000 ranger-monitoring && \
+    chown -R ranger-monitoring:ranger-monitoring /app
+
+# Switch to non-root user
+USER ranger-monitoring
 
 # Set environment variables
 # ENV JAVA_OPTS="-Dranger.service.name=hive \

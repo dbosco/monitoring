@@ -40,13 +40,7 @@ check_docker() {
         exit 1
     fi
     
-    # Check for modern docker compose (v2) or legacy docker-compose (v1)
-    if ! docker compose version &> /dev/null && ! command -v docker-compose &> /dev/null; then
-        print_error "Docker Compose is not installed or not in PATH"
-        exit 1
-    fi
-    
-    print_success "Docker and Docker Compose are available"
+    print_success "Docker is available"
 }
 
 # Build Docker builder image
@@ -111,25 +105,6 @@ run_maven() {
     fi
 }
 
-# Run with Docker Compose
-run_with_compose() {
-    print_info "Running MonitoringRangerPlugin with Docker Compose..."
-    cd "$PROJECT_DIR"
-    
-    # Check if runtime image exists
-    if ! docker image inspect ranger-monitoring:latest &> /dev/null; then
-        print_warning "Runtime image not found. Building it now..."
-        build_runtime_image
-    fi
-    
-    # Use modern docker compose command if available, otherwise fall back to docker-compose
-    if docker compose version &> /dev/null; then
-        docker compose up
-    else
-        docker-compose up
-    fi
-}
-
 # Run with Docker directly
 run_with_docker() {
     print_info "Running with Docker directly..."
@@ -157,13 +132,23 @@ run_with_docker() {
         fi
     done
     
+    # Create logs directory if it doesn't exist and set permissions for ranger-monitoring user (UID 1000)
+    mkdir -p "$PROJECT_DIR/logs"
+    chmod 755 "$PROJECT_DIR/logs" 2>/dev/null || true
+    
     docker run --rm \
+        --user 1000:1000 \
         -v "$PROJECT_DIR/dont_commit_ranger_pkg/ranger-conf:/app/dont_commit_ranger_pkg/ranger-conf" \
         -v "$PROJECT_DIR/dont_commit_ranger_pkg/lib:/app/dont_commit_ranger_pkg/lib" \
         -v "$PROJECT_DIR/dont_commit_ranger_pkg/cache:/app/cache" \
         -v "$PROJECT_DIR/target/classes:/app/target/classes" \
+        -v "$PROJECT_DIR/logs:/app/logs" \
         ranger-monitoring:latest \
-        java -cp "$CLASSPATH" com.privacera.ranger.monitoring.DummyAuthorizer "$@"
+        java \
+        -Djava.util.logging.config.file=/app/dont_commit_ranger_pkg/ranger-conf/logging.properties \
+        -Dranger.monitoring.logs.dir=/app/logs \
+        -cp "$CLASSPATH" \
+        com.privacera.ranger.monitoring.DummyAuthorizer "$@"
 }
 
 # Run MonitoringRangerPlugin with Docker
@@ -217,22 +202,40 @@ run_monitoring() {
     local docker_cmd="docker run"
     if [ "$detached" = true ]; then
         docker_cmd="$docker_cmd -d"
+        # Remove existing container if it exists (for detached mode)
+        docker rm -f ranger-monitoring-app 2>/dev/null || true
+        # Add container name for detached mode (easier to reference)
+        docker_cmd="$docker_cmd --name ranger-monitoring-app"
     else
         docker_cmd="$docker_cmd --rm"
+        # For non-detached mode, we can still use a name but it's less critical
+        # Skip --name when using --rm to avoid conflicts on quick re-runs
     fi
     
+    # Create logs directory if it doesn't exist and set permissions for ranger-monitoring user (UID 1000)
+    mkdir -p "$PROJECT_DIR/logs"
+    chmod 755 "$PROJECT_DIR/logs" 2>/dev/null || true
+    
     $docker_cmd \
+        --user 1000:1000 \
         -v "$PROJECT_DIR/dont_commit_ranger_pkg/ranger-conf:/app/dont_commit_ranger_pkg/ranger-conf" \
         -v "$PROJECT_DIR/dont_commit_ranger_pkg/lib:/app/dont_commit_ranger_pkg/lib" \
         -v "$PROJECT_DIR/dont_commit_ranger_pkg/cache:/app/cache" \
         -v "$PROJECT_DIR/target/classes:/app/target/classes" \
+        -v "$PROJECT_DIR/logs:/app/logs" \
         ranger-monitoring:latest \
-        java -cp "$CLASSPATH" com.privacera.ranger.monitoring.MonitoringRangerPlugin "${java_args[@]}"
+        java \
+        -Djava.util.logging.config.file=/app/dont_commit_ranger_pkg/ranger-conf/logging.properties \
+        -Dranger.monitoring.logs.dir=/app/logs \
+        -cp "$CLASSPATH" \
+        com.privacera.ranger.monitoring.MonitoringRangerPlugin "${java_args[@]}"
     
     if [ "$detached" = true ]; then
         print_success "MonitoringRangerPlugin started in detached mode"
+        print_info "Container name: ranger-monitoring-app"
         print_info "Use 'docker ps' to see running containers"
-        print_info "Use 'docker logs <container_id>' to view logs"
+        print_info "Use 'docker logs ranger-monitoring-app' to view logs"
+        print_info "Use 'docker stop ranger-monitoring-app' to stop the container"
     fi
 }
 
@@ -252,20 +255,13 @@ run_tests() {
 cleanup() {
     print_info "Cleaning up Docker resources..."
     
-    # Remove containers using modern docker compose command if available
-    if docker compose version &> /dev/null; then
-        docker compose -f "$PROJECT_DIR/docker-compose.yml" down 2>/dev/null || true
-    else
-        docker-compose -f "$PROJECT_DIR/docker-compose.yml" down 2>/dev/null || true
-    fi
+    # Stop and remove containers
+    docker stop ranger-monitoring-app 2>/dev/null || true
+    docker rm ranger-monitoring-app 2>/dev/null || true
     
-    # Remove image
+    # Remove images
     docker rmi ranger-monitoring:latest 2>/dev/null || true
     docker rmi ranger-monitoring-builder:latest 2>/dev/null || true
-    
-    # Remove volumes
-    docker volume rm ranger-monitoring_ranger-cache 2>/dev/null || true
-    docker volume rm ranger-monitoring_ranger-temp-cache 2>/dev/null || true
     
     print_success "Cleanup completed"
 }
@@ -281,8 +277,7 @@ show_usage() {
     echo "  test            Run tests"
     echo "  package         Build the application package"
     echo "  maven CMD       Run custom Maven command"
-    echo "  run             Run MonitoringRangerPlugin with Docker Compose"
-    echo "  run-direct      Run with Docker directly"
+    echo "  run-direct      Run DummyAuthorizer with Docker directly"
     echo "  run-monitoring  Run MonitoringRangerPlugin (supports -d/--detached and --interval flags)"
     echo "  cleanup         Clean up Docker resources"
     echo "  shell           Open shell in running container"
@@ -297,7 +292,7 @@ show_usage() {
     echo "  $0 compile                  # Compile application"
     echo "  $0 test                     # Run tests"
     echo "  $0 maven clean package -DskipTests  # Custom Maven command"
-    echo "  $0 run                       # Run MonitoringRangerPlugin with Docker Compose"
+    echo "  $0 run-direct               # Run DummyAuthorizer with Docker directly"
     echo "  $0 run-monitoring            # Run MonitoringRangerPlugin with default 60s interval"
     echo "  $0 run-monitoring --interval 30  # Run MonitoringRangerPlugin with 30s interval"
     echo "  $0 run-monitoring -d         # Run MonitoringRangerPlugin in detached/background mode"
@@ -313,7 +308,7 @@ main() {
     # Parse arguments
     while [[ $# -gt 0 ]]; do
         case $1 in
-            build|build-runtime|compile|test|package|maven|run|run-direct|run-monitoring|cleanup|shell)
+            build|build-runtime|compile|test|package|maven|run-direct|run-monitoring|cleanup|shell)
                 command="$1"
                 shift
                 ;;
@@ -365,9 +360,6 @@ main() {
         maven)
             shift # Remove "maven" from arguments
             run_maven "$*"
-            ;;
-        run)
-            run_with_compose
             ;;
         run-direct)
             run_with_docker "$@"
