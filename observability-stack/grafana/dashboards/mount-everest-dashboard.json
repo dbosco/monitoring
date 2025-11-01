@@ -96,20 +96,6 @@
                 },
                 "overrides": []
             },
-            "options": {
-                "colorMode": "background",
-                "graphMode": "none",
-                "justifyMode": "auto",
-                "orientation": "auto",
-                "textMode": "value",
-                "reduceOptions": {
-                    "fields": "",
-                    "values": false,
-                    "calcs": [
-                        "lastNotNull"
-                    ]
-                }
-            },
             "fieldConfig1": {
                 "defaults": {
                     "unit": "none",
