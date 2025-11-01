@@ -1,0 +1,35 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'ranger-monitoring'
+    environment: 'development'
+
+# Alertmanager configuration (optional)
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+          # - alertmanager:9093
+
+# Load rules once and periodically evaluate them
+rule_files:
+  # - "alert_rules.yml"
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Ranger monitoring application metrics
+  - job_name: 'ranger-monitoring'
+    static_configs:
+      # If application runs in Docker on the same network, use container name
+      - targets: ['ranger-monitoring-app:6085']
+      # If application runs on host or different network, use host.docker.internal
+      # - targets: ['host.docker.internal:6085']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+

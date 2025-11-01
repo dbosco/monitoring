@@ -26,6 +26,9 @@ public class DummyAuthorizer {
     private String RANGER_APP_ID = "privacera_hive";
     private RangerBasePlugin rangerPlugin = null;
     
+    // Prometheus metrics
+    private final PrometheusMetricsRegistry metrics = PrometheusMetricsRegistry.getInstance();
+    
     /**
      * Constructor for DummyAuthorizer.
      * Initializes the Ranger plugin for authorization testing.
@@ -66,11 +69,15 @@ public class DummyAuthorizer {
                 // Verify that MonitoringRangerAdminRESTClient is being used
                 verifyMonitoringClient();
                 
+                // Update metrics
+                metrics.getAuthorizerInitialized().set(1.0);
+                
                 LOG.info("DummyAuthorizer initialized successfully");
             } catch (Exception e) {
                 LOG.error("Failed to initialize DummyAuthorizer: " + e.getMessage(), e);
                 e.printStackTrace();
                 rangerPlugin = null;
+                metrics.getAuthorizerInitialized().set(0.0);
             }
         }
     }

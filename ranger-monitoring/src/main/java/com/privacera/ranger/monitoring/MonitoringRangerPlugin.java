@@ -41,6 +41,9 @@ public class MonitoringRangerPlugin {
     private volatile long minTimeMs = Long.MAX_VALUE;
     private volatile long maxTimeMs = 0;
     
+    // Prometheus metrics
+    private final PrometheusMetricsRegistry metrics = PrometheusMetricsRegistry.getInstance();
+    
     /**
      * Constructor with default interval (60 seconds).
      * 
@@ -97,6 +100,9 @@ public class MonitoringRangerPlugin {
         monitoringThread.setDaemon(false);
         monitoringThread.start();
         
+        // Update metrics
+        metrics.getMonitoringPluginRunning().set(1.0);
+        
         LOG.info("MonitoringRangerPlugin started");
     }
     
@@ -120,6 +126,9 @@ public class MonitoringRangerPlugin {
             }
         }
         
+        // Update metrics
+        metrics.getMonitoringPluginRunning().set(0.0);
+        
         LOG.info("MonitoringRangerPlugin stopped");
     }
     
@@ -133,39 +142,67 @@ public class MonitoringRangerPlugin {
             try {
                 LOG.info("Performing periodic access check...");
                 
+                // Increment active access checks gauge
+                metrics.getActiveAccessChecks().inc();
+                
                 // Measure time taken for the access check
                 long startTime = System.currentTimeMillis();
-                boolean result = authorizer.checkAccess(user, groups, database, table, column);
-                long endTime = System.currentTimeMillis();
-                long timeTakenMs = endTime - startTime;
-                
-                // Update counters
-                totalCount.incrementAndGet();
-                if (result) {
-                    allowedCount.incrementAndGet();
-                } else {
-                    deniedCount.incrementAndGet();
+                boolean result = false;
+                Exception accessError = null;
+                try {
+                    result = authorizer.checkAccess(user, groups, database, table, column);
+                } catch (Exception e) {
+                    accessError = e;
+                    throw e;
+                } finally {
+                    long endTime = System.currentTimeMillis();
+                    long timeTakenMs = endTime - startTime;
+                    
+                    // Update Prometheus metrics (no labels to avoid high cardinality)
+                    metrics.getAccessChecksTotal().inc();
+                    metrics.getAccessCheckDurationMs().observe(timeTakenMs);
+                    
+                    if (accessError != null) {
+                        metrics.getAccessCheckErrorsTotal().inc();
+                    } else if (result) {
+                        metrics.getAccessAllowedTotal().inc();
+                    } else {
+                        metrics.getAccessDeniedTotal().inc();
+                    }
+                    
+                    // Decrement active access checks gauge
+                    metrics.getActiveAccessChecks().dec();
+                    
+                    // Update internal counters and timing statistics (for backward compatibility)
+                    if (accessError == null) {
+                        totalCount.incrementAndGet();
+                        if (result) {
+                            allowedCount.incrementAndGet();
+                        } else {
+                            deniedCount.incrementAndGet();
+                        }
+                        
+                        totalTimeMs.addAndGet(timeTakenMs);
+                        synchronized (this) {
+                            if (timeTakenMs < minTimeMs) {
+                                minTimeMs = timeTakenMs;
+                            }
+                            if (timeTakenMs > maxTimeMs) {
+                                maxTimeMs = timeTakenMs;
+                            }
+                        }
+                    }
                 }
                 
-                // Update timing statistics
-                totalTimeMs.addAndGet(timeTakenMs);
-                synchronized (this) {
-                    if (timeTakenMs < minTimeMs) {
-                        minTimeMs = timeTakenMs;
-                    }
-                    if (timeTakenMs > maxTimeMs) {
-                        maxTimeMs = timeTakenMs;
-                    }
-                }
-                
-                // Calculate average time
+                // Calculate average time (for logging)
                 long averageTimeMs = totalCount.get() > 0 ? totalTimeMs.get() / totalCount.get() : 0;
+                long currentTimeMs = System.currentTimeMillis() - startTime;
                 
                 LOG.info("Periodic access check completed. Result: " + (result ? "ALLOWED" : "DENIED") + 
                         " | Total: " + totalCount.get() + 
                         ", Allowed: " + allowedCount.get() + 
                         ", Denied: " + deniedCount.get() +
-                        " | time_taken_ms: " + timeTakenMs +
+                        " | time_taken_ms: " + currentTimeMs +
                         ", average_time_taken_ms: " + averageTimeMs +
                         ", min_time_taken_ms: " + (minTimeMs == Long.MAX_VALUE ? 0 : minTimeMs) +
                         ", max_time_taken_ms: " + maxTimeMs);
@@ -183,6 +220,9 @@ public class MonitoringRangerPlugin {
                 break;
             } catch (Exception e) {
                 LOG.error("Error during access check in monitoring loop: " + e.getMessage(), e);
+                // Record error in metrics (no labels to avoid high cardinality)
+                metrics.getAccessCheckErrorsTotal().inc();
+                
                 // Continue monitoring even if one check fails
                 try {
                     Thread.sleep(1000); // Brief pause before retrying after an error
@@ -269,6 +309,10 @@ public class MonitoringRangerPlugin {
             }
         }
         
+        // Start metrics server
+        MetricsServer metricsServer = MetricsServer.getInstance();
+        metricsServer.start();
+        
         // Create and start the monitoring plugin
         MonitoringRangerPlugin plugin = new MonitoringRangerPlugin(user, groups, database, table, column, intervalSeconds);
         
@@ -276,6 +320,7 @@ public class MonitoringRangerPlugin {
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             LOG.info("Shutdown signal received, stopping MonitoringRangerPlugin...");
             plugin.stop();
+            metricsServer.stop();
         }));
         
         plugin.start();

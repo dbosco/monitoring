@@ -1,0 +1,13 @@
+# Docker volumes data (if mounted locally)
+prometheus-data/
+grafana-data/
+
+# Grafana dashboards exported but not meant to be committed
+*.json.bak
+
+# Local overrides
+docker-compose.override.yml
+
+# Environment variables (user-specific)
+.env
+

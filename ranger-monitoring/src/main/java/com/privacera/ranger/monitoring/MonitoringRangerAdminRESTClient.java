@@ -24,6 +24,9 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
     
     private static final Log LOG = LogFactory.getLog(MonitoringRangerAdminRESTClient.class);
     
+    // Prometheus metrics
+    private final PrometheusMetricsRegistry metrics = PrometheusMetricsRegistry.getInstance();
+    
     /**
      * Constructor matching the parent class.
      */
@@ -50,12 +53,25 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
     }
     
     /**
+     * Helper method to update Prometheus metrics for API calls.
+     */
+    private void updateApiMetrics(String methodName, long durationMs, Exception exception) {
+        String status = exception == null ? "success" : "error";
+        metrics.getRangerApiCallsTotal().labels(methodName, status).inc();
+        metrics.getRangerApiDurationMs().labels(methodName).observe(durationMs);
+        if (exception != null) {
+            metrics.getRangerApiErrorsTotal().labels(methodName).inc();
+        }
+    }
+    
+    /**
      * Override getServicePoliciesIfUpdated to intercept policy download calls.
      * This is the main method called by PolicyRefresher.
      */
     @Override
     public ServicePolicies getServicePoliciesIfUpdated(final long lastKnownVersion, final long lastActivationTimeInMillis) throws Exception {
-        logApiCall("getServicePoliciesIfUpdated", "version=" + lastKnownVersion);
+        String methodName = "getServicePoliciesIfUpdated";
+        logApiCall(methodName, "version=" + lastKnownVersion);
         long startTime = System.currentTimeMillis();
         ServicePolicies result = null;
         Exception exception = null;
@@ -67,8 +83,11 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
             throw e;
         } finally {
             long duration = System.currentTimeMillis() - startTime;
-            logApiResponse("getServicePoliciesIfUpdated", duration, exception == null, 
+            logApiResponse(methodName, duration, exception == null, 
                 "hasPolicies=" + (result != null));
+            
+            // Update Prometheus metrics
+            updateApiMetrics(methodName, duration, exception);
         }
     }
     
@@ -77,7 +96,8 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
      */
     @Override
     public ServiceTags getServiceTagsIfUpdated(final long lastKnownVersion, final long lastActivationTimeInMillis) throws Exception {
-        logApiCall("getServiceTagsIfUpdated", "version=" + lastKnownVersion);
+        String methodName = "getServiceTagsIfUpdated";
+        logApiCall(methodName, "version=" + lastKnownVersion);
         long startTime = System.currentTimeMillis();
         ServiceTags result = null;
         Exception exception = null;
@@ -89,8 +109,11 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
             throw e;
         } finally {
             long duration = System.currentTimeMillis() - startTime;
-            logApiResponse("getServiceTagsIfUpdated", duration, exception == null,
+            logApiResponse(methodName, duration, exception == null,
                 "hasTags=" + (result != null));
+            
+            // Update Prometheus metrics
+            updateApiMetrics(methodName, duration, exception);
         }
     }
     
@@ -99,7 +122,8 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
      */
     @Override
     public RangerRoles getRolesIfUpdated(final long lastKnownRoleVersion, final long lastActivationTimeInMillis) throws Exception {
-        logApiCall("getRolesIfUpdated", "version=" + lastKnownRoleVersion);
+        String methodName = "getRolesIfUpdated";
+        logApiCall(methodName, "version=" + lastKnownRoleVersion);
         long startTime = System.currentTimeMillis();
         RangerRoles result = null;
         Exception exception = null;
@@ -111,8 +135,11 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
             throw e;
         } finally {
             long duration = System.currentTimeMillis() - startTime;
-            logApiResponse("getRolesIfUpdated", duration, exception == null,
+            logApiResponse(methodName, duration, exception == null,
                 "hasRoles=" + (result != null));
+            
+            // Update Prometheus metrics
+            updateApiMetrics(methodName, duration, exception);
         }
     }
     
@@ -121,7 +148,8 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
      */
     @Override
     public RangerUserStore getUserStoreIfUpdated(final long lastKnownUserStoreVersion, final long lastActivationTimeInMillis) throws Exception {
-        logApiCall("getUserStoreIfUpdated", "version=" + lastKnownUserStoreVersion);
+        String methodName = "getUserStoreIfUpdated";
+        logApiCall(methodName, "version=" + lastKnownUserStoreVersion);
         long startTime = System.currentTimeMillis();
         RangerUserStore result = null;
         Exception exception = null;
@@ -133,8 +161,9 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
             throw e;
         } finally {
             long duration = System.currentTimeMillis() - startTime;
-            logApiResponse("getUserStoreIfUpdated", duration, exception == null,
+            logApiResponse(methodName, duration, exception == null,
                 "hasUserStore=" + (result != null));
+            updateApiMetrics(methodName, duration, exception);
         }
     }
     
@@ -143,7 +172,8 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
      */
     @Override
     public ServiceGdsInfo getGdsInfoIfUpdated(long lastKnownVersion, long lastActivationTimeInMillis) throws Exception {
-        logApiCall("getGdsInfoIfUpdated", "version=" + lastKnownVersion);
+        String methodName = "getGdsInfoIfUpdated";
+        logApiCall(methodName, "version=" + lastKnownVersion);
         long startTime = System.currentTimeMillis();
         ServiceGdsInfo result = null;
         Exception exception = null;
@@ -155,8 +185,9 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
             throw e;
         } finally {
             long duration = System.currentTimeMillis() - startTime;
-            logApiResponse("getGdsInfoIfUpdated", duration, exception == null,
+            logApiResponse(methodName, duration, exception == null,
                 "hasGdsInfo=" + (result != null));
+            updateApiMetrics(methodName, duration, exception);
         }
     }
     
@@ -165,7 +196,8 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
      */
     @Override
     public RangerRole createRole(final RangerRole request) throws Exception {
-        logApiCall("createRole", "roleName=" + (request != null ? request.getName() : "null"));
+        String methodName = "createRole";
+        logApiCall(methodName, "roleName=" + (request != null ? request.getName() : "null"));
         long startTime = System.currentTimeMillis();
         RangerRole result = null;
         Exception exception = null;
@@ -177,7 +209,8 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
             throw e;
         } finally {
             long duration = System.currentTimeMillis() - startTime;
-            logApiResponse("createRole", duration, exception == null, null);
+            logApiResponse(methodName, duration, exception == null, null);
+            updateApiMetrics(methodName, duration, exception);
         }
     }
     
@@ -186,7 +219,8 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
      */
     @Override
     public void dropRole(final String execUser, final String roleName) throws Exception {
-        logApiCall("dropRole", "roleName=" + roleName + ", execUser=" + execUser);
+        String methodName = "dropRole";
+        logApiCall(methodName, "roleName=" + roleName + ", execUser=" + execUser);
         long startTime = System.currentTimeMillis();
         Exception exception = null;
         try {
@@ -196,7 +230,8 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
             throw e;
         } finally {
             long duration = System.currentTimeMillis() - startTime;
-            logApiResponse("dropRole", duration, exception == null, null);
+            logApiResponse(methodName, duration, exception == null, null);
+            updateApiMetrics(methodName, duration, exception);
         }
     }
     
@@ -205,7 +240,8 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
      */
     @Override
     public List<String> getUserRoles(final String execUser) throws Exception {
-        logApiCall("getUserRoles", "execUser=" + execUser);
+        String methodName = "getUserRoles";
+        logApiCall(methodName, "execUser=" + execUser);
         long startTime = System.currentTimeMillis();
         List<String> result = null;
         Exception exception = null;
@@ -217,8 +253,9 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
             throw e;
         } finally {
             long duration = System.currentTimeMillis() - startTime;
-            logApiResponse("getUserRoles", duration, exception == null,
+            logApiResponse(methodName, duration, exception == null,
                 "rolesCount=" + (result != null ? result.size() : 0));
+            updateApiMetrics(methodName, duration, exception);
         }
     }
     
@@ -227,7 +264,8 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
      */
     @Override
     public List<String> getAllRoles(final String execUser) throws Exception {
-        logApiCall("getAllRoles", "execUser=" + execUser);
+        String methodName = "getAllRoles";
+        logApiCall(methodName, "execUser=" + execUser);
         long startTime = System.currentTimeMillis();
         List<String> result = null;
         Exception exception = null;
@@ -239,8 +277,9 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
             throw e;
         } finally {
             long duration = System.currentTimeMillis() - startTime;
-            logApiResponse("getAllRoles", duration, exception == null,
+            logApiResponse(methodName, duration, exception == null,
                 "rolesCount=" + (result != null ? result.size() : 0));
+            updateApiMetrics(methodName, duration, exception);
         }
     }
     
@@ -249,7 +288,8 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
      */
     @Override
     public RangerRole getRole(final String execUser, final String roleName) throws Exception {
-        logApiCall("getRole", "roleName=" + roleName + ", execUser=" + execUser);
+        String methodName = "getRole";
+        logApiCall(methodName, "roleName=" + roleName + ", execUser=" + execUser);
         long startTime = System.currentTimeMillis();
         RangerRole result = null;
         Exception exception = null;
@@ -261,7 +301,8 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
             throw e;
         } finally {
             long duration = System.currentTimeMillis() - startTime;
-            logApiResponse("getRole", duration, exception == null, "hasRole=" + (result != null));
+            logApiResponse(methodName, duration, exception == null, "hasRole=" + (result != null));
+            updateApiMetrics(methodName, duration, exception);
         }
     }
     
@@ -270,7 +311,8 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
      */
     @Override
     public void grantRole(final GrantRevokeRoleRequest request) throws Exception {
-        logApiCall("grantRole", "request=" + (request != null ? request.getClass().getSimpleName() : "null"));
+        String methodName = "grantRole";
+        logApiCall(methodName, "request=" + (request != null ? request.getClass().getSimpleName() : "null"));
         long startTime = System.currentTimeMillis();
         Exception exception = null;
         try {
@@ -280,7 +322,8 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
             throw e;
         } finally {
             long duration = System.currentTimeMillis() - startTime;
-            logApiResponse("grantRole", duration, exception == null, null);
+            logApiResponse(methodName, duration, exception == null, null);
+            updateApiMetrics(methodName, duration, exception);
         }
     }
     
@@ -289,7 +332,8 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
      */
     @Override
     public void revokeRole(final GrantRevokeRoleRequest request) throws Exception {
-        logApiCall("revokeRole", "request=" + (request != null ? request.getClass().getSimpleName() : "null"));
+        String methodName = "revokeRole";
+        logApiCall(methodName, "request=" + (request != null ? request.getClass().getSimpleName() : "null"));
         long startTime = System.currentTimeMillis();
         Exception exception = null;
         try {
@@ -299,7 +343,8 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
             throw e;
         } finally {
             long duration = System.currentTimeMillis() - startTime;
-            logApiResponse("revokeRole", duration, exception == null, null);
+            logApiResponse(methodName, duration, exception == null, null);
+            updateApiMetrics(methodName, duration, exception);
         }
     }
     
@@ -308,7 +353,8 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
      */
     @Override
     public void grantAccess(final GrantRevokeRequest request) throws Exception {
-        logApiCall("grantAccess", "request=" + (request != null ? request.getClass().getSimpleName() : "null"));
+        String methodName = "grantAccess";
+        logApiCall(methodName, "request=" + (request != null ? request.getClass().getSimpleName() : "null"));
         long startTime = System.currentTimeMillis();
         Exception exception = null;
         try {
@@ -318,7 +364,8 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
             throw e;
         } finally {
             long duration = System.currentTimeMillis() - startTime;
-            logApiResponse("grantAccess", duration, exception == null, null);
+            logApiResponse(methodName, duration, exception == null, null);
+            updateApiMetrics(methodName, duration, exception);
         }
     }
     
@@ -327,7 +374,8 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
      */
     @Override
     public void revokeAccess(final GrantRevokeRequest request) throws Exception {
-        logApiCall("revokeAccess", "request=" + (request != null ? request.getClass().getSimpleName() : "null"));
+        String methodName = "revokeAccess";
+        logApiCall(methodName, "request=" + (request != null ? request.getClass().getSimpleName() : "null"));
         long startTime = System.currentTimeMillis();
         Exception exception = null;
         try {
@@ -337,7 +385,8 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
             throw e;
         } finally {
             long duration = System.currentTimeMillis() - startTime;
-            logApiResponse("revokeAccess", duration, exception == null, null);
+            logApiResponse(methodName, duration, exception == null, null);
+            updateApiMetrics(methodName, duration, exception);
         }
     }
     
@@ -346,7 +395,8 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
      */
     @Override
     public List<String> getTagTypes(String pattern) throws Exception {
-        logApiCall("getTagTypes", "pattern=" + pattern);
+        String methodName = "getTagTypes";
+        logApiCall(methodName, "pattern=" + pattern);
         long startTime = System.currentTimeMillis();
         List<String> result = null;
         Exception exception = null;
@@ -358,8 +408,9 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
             throw e;
         } finally {
             long duration = System.currentTimeMillis() - startTime;
-            logApiResponse("getTagTypes", duration, exception == null,
+            logApiResponse(methodName, duration, exception == null,
                 "tagTypesCount=" + (result != null ? result.size() : 0));
+            updateApiMetrics(methodName, duration, exception);
         }
     }
     
@@ -368,7 +419,8 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
      */
     @Override
     public List<Map<String, Object>> getGroups() throws Exception {
-        logApiCall("getGroups", null);
+        String methodName = "getGroups";
+        logApiCall(methodName, null);
         long startTime = System.currentTimeMillis();
         List<Map<String, Object>> result = null;
         Exception exception = null;
@@ -380,8 +432,9 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
             throw e;
         } finally {
             long duration = System.currentTimeMillis() - startTime;
-            logApiResponse("getGroups", duration, exception == null,
+            logApiResponse(methodName, duration, exception == null,
                 "groupsCount=" + (result != null ? result.size() : 0));
+            updateApiMetrics(methodName, duration, exception);
         }
     }
     
@@ -390,7 +443,8 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
      */
     @Override
     public List<Map<String, Object>> getUsersByGroup(String groupName) throws Exception {
-        logApiCall("getUsersByGroup", "groupName=" + groupName);
+        String methodName = "getUsersByGroup";
+        logApiCall(methodName, "groupName=" + groupName);
         long startTime = System.currentTimeMillis();
         List<Map<String, Object>> result = null;
         Exception exception = null;
@@ -402,8 +456,9 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
             throw e;
         } finally {
             long duration = System.currentTimeMillis() - startTime;
-            logApiResponse("getUsersByGroup", duration, exception == null,
+            logApiResponse(methodName, duration, exception == null,
                 "usersCount=" + (result != null ? result.size() : 0));
+            updateApiMetrics(methodName, duration, exception);
         }
     }
     
@@ -412,7 +467,8 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
      */
     @Override
     public List<Map<String, Object>> getGroupsForUser(String username) throws Exception {
-        logApiCall("getGroupsForUser", "username=" + username);
+        String methodName = "getGroupsForUser";
+        logApiCall(methodName, "username=" + username);
         long startTime = System.currentTimeMillis();
         List<Map<String, Object>> result = null;
         Exception exception = null;
@@ -424,8 +480,9 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
             throw e;
         } finally {
             long duration = System.currentTimeMillis() - startTime;
-            logApiResponse("getGroupsForUser", duration, exception == null,
+            logApiResponse(methodName, duration, exception == null,
                 "groupsCount=" + (result != null ? result.size() : 0));
+            updateApiMetrics(methodName, duration, exception);
         }
     }
     
@@ -434,7 +491,8 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
      */
     @Override
     public HashMap<String, Object> getUserInfoByEmailAddress(String emailAddress) throws Exception {
-        logApiCall("getUserInfoByEmailAddress", "emailAddress=" + emailAddress);
+        String methodName = "getUserInfoByEmailAddress";
+        logApiCall(methodName, "emailAddress=" + emailAddress);
         long startTime = System.currentTimeMillis();
         HashMap<String, Object> result = null;
         Exception exception = null;
@@ -446,8 +504,9 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
             throw e;
         } finally {
             long duration = System.currentTimeMillis() - startTime;
-            logApiResponse("getUserInfoByEmailAddress", duration, exception == null,
+            logApiResponse(methodName, duration, exception == null,
                 "hasUserInfo=" + (result != null));
+            updateApiMetrics(methodName, duration, exception);
         }
     }
     
@@ -456,7 +515,8 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
      */
     @Override
     public Map<String, String> getUserAttributesForUserName(String userName) throws Exception {
-        logApiCall("getUserAttributesForUserName", "userName=" + userName);
+        String methodName = "getUserAttributesForUserName";
+        logApiCall(methodName, "userName=" + userName);
         long startTime = System.currentTimeMillis();
         Map<String, String> result = null;
         Exception exception = null;
@@ -468,8 +528,9 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
             throw e;
         } finally {
             long duration = System.currentTimeMillis() - startTime;
-            logApiResponse("getUserAttributesForUserName", duration, exception == null,
+            logApiResponse(methodName, duration, exception == null,
                 "attributesCount=" + (result != null ? result.size() : 0));
+            updateApiMetrics(methodName, duration, exception);
         }
     }
     
@@ -478,7 +539,8 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
      */
     @Override
     public List<Map<String, Object>> getUsersWithoutGroups() throws Exception {
-        logApiCall("getUsersWithoutGroups", null);
+        String methodName = "getUsersWithoutGroups";
+        logApiCall(methodName, null);
         long startTime = System.currentTimeMillis();
         List<Map<String, Object>> result = null;
         Exception exception = null;
@@ -490,8 +552,9 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
             throw e;
         } finally {
             long duration = System.currentTimeMillis() - startTime;
-            logApiResponse("getUsersWithoutGroups", duration, exception == null,
+            logApiResponse(methodName, duration, exception == null,
                 "usersCount=" + (result != null ? result.size() : 0));
+            updateApiMetrics(methodName, duration, exception);
         }
     }
 }

@@ -108,6 +108,10 @@ run_maven() {
 # Run with Docker directly
 run_with_docker() {
     print_info "Running with Docker directly..."
+    
+    # Ensure network exists
+    ensure_network
+    
     cd "$PROJECT_DIR"
     
     # Check if runtime image exists
@@ -132,11 +136,15 @@ run_with_docker() {
         fi
     done
     
+    # Get network name
+    local network_name="${DOCKER_NETWORK_NAME:-skynet}"
+    
     # Create logs directory if it doesn't exist and set permissions for ranger-monitoring user (UID 1000)
     mkdir -p "$PROJECT_DIR/logs"
     chmod 755 "$PROJECT_DIR/logs" 2>/dev/null || true
     
     docker run --rm \
+        --network "${network_name}" \
         --user 1000:1000 \
         -v "$PROJECT_DIR/dont_commit_ranger_pkg/ranger-conf:/app/dont_commit_ranger_pkg/ranger-conf" \
         -v "$PROJECT_DIR/dont_commit_ranger_pkg/lib:/app/dont_commit_ranger_pkg/lib" \
@@ -149,6 +157,23 @@ run_with_docker() {
         -Dranger.monitoring.logs.dir=/app/logs \
         -cp "$CLASSPATH" \
         com.privacera.ranger.monitoring.DummyAuthorizer "$@"
+}
+
+# Ensure network exists
+ensure_network() {
+    local network_name="${DOCKER_NETWORK_NAME:-skynet}"
+    if ! docker network ls | grep -qE "(^| )${network_name}( |$)"; then
+        print_info "Creating Docker network '${network_name}'..."
+        docker network create "${network_name}"
+        if [ $? -eq 0 ]; then
+            print_success "Network '${network_name}' created successfully"
+        else
+            print_error "Failed to create network '${network_name}'"
+            exit 1
+        fi
+    else
+        print_info "Network '${network_name}' already exists"
+    fi
 }
 
 # Run MonitoringRangerPlugin with Docker
@@ -174,6 +199,10 @@ run_monitoring() {
     if [ "$detached" = true ]; then
         print_info "Running in detached mode (background)"
     fi
+    
+    # Ensure network exists
+    ensure_network
+    
     cd "$PROJECT_DIR"
     
     # Check if runtime image exists
@@ -198,6 +227,9 @@ run_monitoring() {
         fi
     done
     
+    # Get network name
+    local network_name="${DOCKER_NETWORK_NAME:-skynet}"
+    
     # Build docker run command
     local docker_cmd="docker run"
     if [ "$detached" = true ]; then
@@ -211,6 +243,9 @@ run_monitoring() {
         # For non-detached mode, we can still use a name but it's less critical
         # Skip --name when using --rm to avoid conflicts on quick re-runs
     fi
+    
+    # Add network connection
+    docker_cmd="$docker_cmd --network ${network_name}"
     
     # Create logs directory if it doesn't exist and set permissions for ranger-monitoring user (UID 1000)
     mkdir -p "$PROJECT_DIR/logs"
@@ -233,6 +268,7 @@ run_monitoring() {
     if [ "$detached" = true ]; then
         print_success "MonitoringRangerPlugin started in detached mode"
         print_info "Container name: ranger-monitoring-app"
+        print_info "Network: ${network_name}"
         print_info "Use 'docker ps' to see running containers"
         print_info "Use 'docker logs ranger-monitoring-app' to view logs"
         print_info "Use 'docker stop ranger-monitoring-app' to stop the container"
