@@ -1,6 +1,6 @@
 #!/bin/bash
 # SSL Certificate Monitoring Deployment Script
-# This script syncs the required files to a remote server
+# This script syncs the required files including ranger-monitoring to a remote server
 
 # Usage: ./deploy.sh <remote_server> <remote_path>
 # Example: ./deploy.sh user@server.com /opt/ssl-monitoring
@@ -23,8 +23,9 @@ cd "$SCRIPT_DIR" || {
     exit 1
 }
 
-echo "Deploying SSL Certificate Monitoring to $REMOTE_SERVER:$REMOTE_PATH"
+echo "Deploying SSL Certificate Monitoring and ranger-monitoring to $REMOTE_SERVER:$REMOTE_PATH"
 echo "Working directory: $(pwd)"
+echo "Excluding: .bk files and cache/ folders from ranger-monitoring"
 
 # Create rsync exclude file
 EXCLUDE_FILE="/tmp/ssl_monitor_exclude.txt"
@@ -83,6 +84,14 @@ logs/
 # Backup files
 *.bak
 *.backup
+*.bk
+**/*.bk
+
+# Ranger monitoring specific exclusions
+ranger-monitoring/**/cache
+ranger-monitoring/**/cache/
+**/cache
+**/cache/
 EOF
 
 echo "Created exclude file: $EXCLUDE_FILE"

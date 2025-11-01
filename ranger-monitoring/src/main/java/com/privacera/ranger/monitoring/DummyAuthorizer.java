@@ -119,7 +119,7 @@ public class DummyAuthorizer {
      * @param column the column name
      * @return RangerAccessRequestImpl object
      */
-    private RangerAccessRequestImpl createRangerHiveAccessRequest(String user, Set<String> groups, String database,
+    protected RangerAccessRequestImpl createRangerHiveAccessRequest(String user, Set<String> groups, String database,
             String table, String column) {
         
         final String ACCESS_TYPE_SELECT = "select";
@@ -201,14 +201,14 @@ public class DummyAuthorizer {
         }
         
         // Test data
-        String user = "user1";
+        String user = "test_user1";
         Set<String> groups = new HashSet<>();
         // groups.add("testgroup");
         // groups.add("admin");
         
-        String database = "db1";
-        String table = "table2";
-        String column = "col1";
+        String database = "test_db1";
+        String table = "test_table1";
+        String column = "test_col1";
         
         // Use command line arguments if provided
         if (args.length >= 5) {

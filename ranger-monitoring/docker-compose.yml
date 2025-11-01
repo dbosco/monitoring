@@ -2,41 +2,31 @@ version: '3.8'
 
 services:
   ranger-monitoring:
-    build:
-      context: .
-      dockerfile: Dockerfile.runtime
+    image: ranger-monitoring:latest
     container_name: ranger-monitoring-app
     volumes:
       # Mount compiled classes
       - ./target/classes:/app/target/classes
       # Mount Ranger configuration
-      - ./dont_commit_ranger_pkg/ranger-conf:/app/ranger-conf
+      - ./dont_commit_ranger_pkg/ranger-conf:/app/dont_commit_ranger_pkg/ranger-conf
       # Mount Ranger libraries
-      - ./dont_commit_ranger_pkg/lib:/app/lib
-      # Mount keystore directory (if you have keystore files)
-      - ./dont_commit_ranger_pkg/keystore:/app/keystore
-      # Mount cache directory for Ranger policies
+      - ./dont_commit_ranger_pkg/lib:/app/dont_commit_ranger_pkg/lib
+      # Mount cache directory for Ranger policies and audit logs
       - ./dont_commit_ranger_pkg/cache:/app/cache
+    # Build classpath and run MonitoringRangerPlugin
+    entrypoint: ["sh", "-c"]
+    command: >
+      CLASSPATH="/app/target/classes:/app/dont_commit_ranger_pkg/ranger-conf";
+      for jar in /app/dont_commit_ranger_pkg/lib/*.jar; do
+        if [ -f "$$jar" ]; then
+          CLASSPATH="$$CLASSPATH:$$jar";
+        fi;
+      done;
+      exec java -cp "$$CLASSPATH" com.privacera.ranger.monitoring.MonitoringRangerPlugin $${MONITORING_ARGS:-"--interval 60"}
     environment:
-      - JAVA_OPTS=-Dranger.service.name=hive -Dranger.service.host=localhost -Dranger.service.port=6080 -Dranger.service.user=ranger -Dranger.service.password=ranger -Dranger.policy.cache.dir=/app/cache/policycache -Dranger.temp.cache.dir=/app/cache/temp-cache -Dranger.audit.solr.urls=http://localhost:6083/solr/ranger_audits
-    ports:
-      - "8080:8080"
-    networks:
-      - ranger-network
-
-  # Optional: Add a Ranger Admin Server for testing (if you have one)
-  # ranger-admin:
-  #   image: apache/ranger:latest
-  #   container_name: ranger-admin
-  #   ports:
-  #     - "6080:6080"
-  #   networks:
-  #     - ranger-network
-
-volumes:
-  ranger-cache:
-  ranger-temp-cache:
+      - MONITORING_ARGS=${MONITORING_ARGS:---interval 60}
+    restart: unless-stopped
 
 networks:
-  ranger-network:
-    driver: bridge
+  default:
+    name: ranger-monitoring-network

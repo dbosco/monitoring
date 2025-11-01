@@ -49,7 +49,7 @@ check_docker() {
     print_success "Docker and Docker Compose are available"
 }
 
-# Build Docker image
+# Build Docker builder image
 build_image() {
     print_info "Building Docker builder image..."
     cd "$PROJECT_DIR"
@@ -60,6 +60,21 @@ build_image() {
         print_success "Docker builder image built successfully"
     else
         print_error "Failed to build Docker builder image"
+        exit 1
+    fi
+}
+
+# Build Docker runtime image
+build_runtime_image() {
+    print_info "Building Docker runtime image..."
+    cd "$PROJECT_DIR"
+    
+    docker build -f Dockerfile.runtime -t ranger-monitoring:latest .
+    
+    if [ $? -eq 0 ]; then
+        print_success "Docker runtime image built successfully"
+    else
+        print_error "Failed to build Docker runtime image"
         exit 1
     fi
 }
@@ -98,14 +113,20 @@ run_maven() {
 
 # Run with Docker Compose
 run_with_compose() {
-    print_info "Running with Docker Compose..."
+    print_info "Running MonitoringRangerPlugin with Docker Compose..."
     cd "$PROJECT_DIR"
+    
+    # Check if runtime image exists
+    if ! docker image inspect ranger-monitoring:latest &> /dev/null; then
+        print_warning "Runtime image not found. Building it now..."
+        build_runtime_image
+    fi
     
     # Use modern docker compose command if available, otherwise fall back to docker-compose
     if docker compose version &> /dev/null; then
-        docker compose up --build
+        docker compose up
     else
-        docker-compose up --build
+        docker-compose up
     fi
 }
 
@@ -114,21 +135,105 @@ run_with_docker() {
     print_info "Running with Docker directly..."
     cd "$PROJECT_DIR"
     
+    # Check if runtime image exists
+    if ! docker image inspect ranger-monitoring:latest &> /dev/null; then
+        print_warning "Runtime image not found. Building it now..."
+        build_runtime_image
+    fi
+    
+    # Check if lib directory exists
+    if [ ! -d "$PROJECT_DIR/dont_commit_ranger_pkg/lib" ]; then
+        print_error "Ranger lib directory not found: $PROJECT_DIR/dont_commit_ranger_pkg/lib"
+        exit 1
+    fi
+    
     # Build classpath
     CLASSPATH="/app/target/classes:/app/dont_commit_ranger_pkg/ranger-conf"
     
     # Add all JAR files from Ranger lib directory
     for jar in dont_commit_ranger_pkg/lib/*.jar; do
         if [ -f "$jar" ]; then
-            CLASSPATH="$CLASSPATH:/app/$jar"
+            CLASSPATH="$CLASSPATH:/app/dont_commit_ranger_pkg/lib/$(basename "$jar")"
         fi
     done
     
     docker run --rm \
         -v "$PROJECT_DIR/dont_commit_ranger_pkg/ranger-conf:/app/dont_commit_ranger_pkg/ranger-conf" \
+        -v "$PROJECT_DIR/dont_commit_ranger_pkg/lib:/app/dont_commit_ranger_pkg/lib" \
+        -v "$PROJECT_DIR/dont_commit_ranger_pkg/cache:/app/cache" \
         -v "$PROJECT_DIR/target/classes:/app/target/classes" \
         ranger-monitoring:latest \
         java -cp "$CLASSPATH" com.privacera.ranger.monitoring.DummyAuthorizer "$@"
+}
+
+# Run MonitoringRangerPlugin with Docker
+run_monitoring() {
+    local detached=false
+    local java_args=()
+    
+    # Parse arguments for run-monitoring
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -d|--detached)
+                detached=true
+                shift
+                ;;
+            *)
+                java_args+=("$1")
+                shift
+                ;;
+        esac
+    done
+    
+    print_info "Running MonitoringRangerPlugin with Docker..."
+    if [ "$detached" = true ]; then
+        print_info "Running in detached mode (background)"
+    fi
+    cd "$PROJECT_DIR"
+    
+    # Check if runtime image exists
+    if ! docker image inspect ranger-monitoring:latest &> /dev/null; then
+        print_warning "Runtime image not found. Building it now..."
+        build_runtime_image
+    fi
+    
+    # Check if lib directory exists
+    if [ ! -d "$PROJECT_DIR/dont_commit_ranger_pkg/lib" ]; then
+        print_error "Ranger lib directory not found: $PROJECT_DIR/dont_commit_ranger_pkg/lib"
+        exit 1
+    fi
+    
+    # Build classpath
+    CLASSPATH="/app/target/classes:/app/dont_commit_ranger_pkg/ranger-conf"
+    
+    # Add all JAR files from Ranger lib directory
+    for jar in dont_commit_ranger_pkg/lib/*.jar; do
+        if [ -f "$jar" ]; then
+            CLASSPATH="$CLASSPATH:/app/dont_commit_ranger_pkg/lib/$(basename "$jar")"
+        fi
+    done
+    
+    # Build docker run command
+    local docker_cmd="docker run"
+    if [ "$detached" = true ]; then
+        docker_cmd="$docker_cmd -d"
+    else
+        docker_cmd="$docker_cmd --rm"
+    fi
+    
+    $docker_cmd \
+        -v "$PROJECT_DIR/dont_commit_ranger_pkg/ranger-conf:/app/dont_commit_ranger_pkg/ranger-conf" \
+        -v "$PROJECT_DIR/dont_commit_ranger_pkg/lib:/app/dont_commit_ranger_pkg/lib" \
+        -v "$PROJECT_DIR/dont_commit_ranger_pkg/cache:/app/cache" \
+        -v "$PROJECT_DIR/target/classes:/app/target/classes" \
+        ranger-monitoring:latest \
+        java -cp "$CLASSPATH" com.privacera.ranger.monitoring.MonitoringRangerPlugin "${java_args[@]}"
+    
+    if [ "$detached" = true ]; then
+        print_success "MonitoringRangerPlugin started in detached mode"
+        print_info "Use 'docker ps' to see running containers"
+        print_info "Use 'docker logs <container_id>' to view logs"
+    fi
 }
 
 # Run tests with Docker
@@ -171,12 +276,14 @@ show_usage() {
     echo ""
     echo "Commands:"
     echo "  build           Build Docker builder image"
+    echo "  build-runtime   Build Docker runtime image"
     echo "  compile         Compile the Java application"
     echo "  test            Run tests"
     echo "  package         Build the application package"
     echo "  maven CMD       Run custom Maven command"
-    echo "  run             Run with Docker Compose"
+    echo "  run             Run MonitoringRangerPlugin with Docker Compose"
     echo "  run-direct      Run with Docker directly"
+    echo "  run-monitoring  Run MonitoringRangerPlugin (supports -d/--detached and --interval flags)"
     echo "  cleanup         Clean up Docker resources"
     echo "  shell           Open shell in running container"
     echo ""
@@ -186,10 +293,15 @@ show_usage() {
     echo ""
     echo "Examples:"
     echo "  $0 build                    # Build Docker builder image"
+    echo "  $0 build-runtime            # Build Docker runtime image"
     echo "  $0 compile                  # Compile application"
     echo "  $0 test                     # Run tests"
     echo "  $0 maven clean package -DskipTests  # Custom Maven command"
-    echo "  $0 run                       # Run with Docker Compose"
+    echo "  $0 run                       # Run MonitoringRangerPlugin with Docker Compose"
+    echo "  $0 run-monitoring            # Run MonitoringRangerPlugin with default 60s interval"
+    echo "  $0 run-monitoring --interval 30  # Run MonitoringRangerPlugin with 30s interval"
+    echo "  $0 run-monitoring -d         # Run MonitoringRangerPlugin in detached/background mode"
+    echo "  $0 run-monitoring -d --interval 30  # Run in detached mode with 30s interval"
     echo "  $0 cleanup                   # Clean up resources"
 }
 
@@ -201,7 +313,7 @@ main() {
     # Parse arguments
     while [[ $# -gt 0 ]]; do
         case $1 in
-            build|compile|test|package|maven|run|run-direct|cleanup|shell)
+            build|build-runtime|compile|test|package|maven|run|run-direct|run-monitoring|cleanup|shell)
                 command="$1"
                 shift
                 ;;
@@ -214,6 +326,10 @@ main() {
                 exit 0
                 ;;
             *)
+                # For run-monitoring, collect remaining args
+                if [ "$command" = "run-monitoring" ]; then
+                    break
+                fi
                 print_error "Unknown option: $1"
                 show_usage
                 exit 1
@@ -234,6 +350,9 @@ main() {
         build)
             build_image
             ;;
+        build-runtime)
+            build_runtime_image
+            ;;
         compile)
             run_maven "clean compile"
             ;;
@@ -251,7 +370,10 @@ main() {
             run_with_compose
             ;;
         run-direct)
-            run_with_docker
+            run_with_docker "$@"
+            ;;
+        run-monitoring)
+            run_monitoring "$@"
             ;;
         cleanup)
             cleanup
