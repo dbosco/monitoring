@@ -13,6 +13,7 @@ import org.apache.ranger.plugin.policyengine.RangerAccessResourceImpl;
 import org.apache.ranger.plugin.policyengine.RangerAccessResult;
 import org.apache.ranger.plugin.service.RangerBasePlugin;
 import org.apache.ranger.plugin.audit.RangerDefaultAuditHandler;
+import org.apache.ranger.plugin.util.PolicyRefresher;
 
 /**
  * DummyAuthorizer class for testing Ranger authorization functionality.
@@ -61,6 +62,9 @@ public class DummyAuthorizer {
                 
                 LOG.info("RangerBasePlugin initialized, setting audit handler...");
                 rangerPlugin.setResultProcessor(new RangerDefaultAuditHandler());
+                
+                // Verify that MonitoringRangerAdminRESTClient is being used
+                verifyMonitoringClient();
                 
                 LOG.info("DummyAuthorizer initialized successfully");
             } catch (Exception e) {
@@ -127,9 +131,7 @@ public class DummyAuthorizer {
         final String CLUSTER_NAME = "api-service";
         final String KEY_DATABASE = "database";
         final String KEY_TABLE = "table";
-        final String KEY_UDF = "udf";
         final String KEY_COLUMN = "column";
-        final String KEY_URL = "url";
         
         String log_str = "user=" + user + ", groups=" + groups + ", database=" + database + ", table=" + table + ", column=" + column;
         LOG.debug("Creating Ranger access request: " + log_str);
@@ -183,6 +185,39 @@ public class DummyAuthorizer {
      */
     public String getAppId() {
         return RANGER_APP_ID;
+    }
+    
+    /**
+     * Verifies that MonitoringRangerAdminRESTClient is being used.
+     * Since we're using configuration-based approach, this just verifies the setup.
+     */
+    private void verifyMonitoringClient() {
+        try {
+            PolicyRefresher refresher = rangerPlugin.getPolicyRefresher();
+            if (refresher == null) {
+                LOG.warn("PolicyRefresher is null, cannot verify monitoring client");
+                return;
+            }
+            
+            Object adminClient = refresher.getRangerAdminClient();
+            if (adminClient == null) {
+                LOG.warn("RangerAdminClient is null, cannot verify monitoring client");
+                return;
+            }
+            
+            String clientType = adminClient.getClass().getName();
+            LOG.info("RangerAdminClient type: " + clientType);
+            
+            if (adminClient instanceof com.privacera.ranger.monitoring.MonitoringRangerAdminRESTClient) {
+                LOG.info("✓ VERIFIED: MonitoringRangerAdminRESTClient is being used");
+                System.out.println("✓ VERIFIED: MonitoringRangerAdminRESTClient is being used");
+            } else {
+                LOG.warn("⚠ WARNING: Expected MonitoringRangerAdminRESTClient but got: " + clientType);
+                LOG.warn("⚠ Make sure ranger.plugin.hive.policy.source.impl is set to com.privacera.ranger.monitoring.MonitoringRangerAdminRESTClient");
+            }
+        } catch (Exception e) {
+            LOG.error("Failed to verify monitoring client: " + e.getMessage(), e);
+        }
     }
     
     /**
