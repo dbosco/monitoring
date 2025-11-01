@@ -70,6 +70,16 @@ DOCKER_NETWORK_NAME=my-custom-network docker-compose up -d
   - Password: `admin`
 - **Purpose**: Metrics visualization and dashboards
 
+**Editing Dashboards:**
+Dashboards are provisioned from files, which means they can be edited in the UI (with `allowUiUpdates: true`), but changes are saved to Grafana's database, not the file. To persist changes:
+1. Edit the dashboard in Grafana UI
+2. Click the dashboard title → **Settings** → **JSON Model**
+3. Copy the JSON
+4. Save it back to the dashboard file (e.g., `grafana/dashboards/mount-everest-dashboard.json`)
+5. The changes will be reloaded on the next provisioning cycle (every 5 minutes)
+
+Alternatively, you can export the dashboard: Dashboard menu → **Share** → **Export** → Save as JSON file.
+
 **Set Mount Everest Dashboard as Default Home:**
 To show the "Mount Everest" dashboard when accessing the root URL:
 1. Log in to Grafana (http://localhost:3000)
