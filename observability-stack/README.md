@@ -2,9 +2,38 @@
 
 This directory contains Docker Compose configuration for running Prometheus, Grafana, and Jaeger together for monitoring and observability.
 
-## Quick Start - Connecting Your App Container
+## Quick Start
 
-**If you're starting a new container:**
+### Using the Startup Script (Recommended)
+
+The `run_ranger_monitoring.sh` script automatically handles .env file detection, network creation, and service startup:
+
+```bash
+# Start all services in detached mode (recommended)
+./run_ranger_monitoring.sh up -d
+
+# Start in foreground
+./run_ranger_monitoring.sh up
+
+# Stop all services
+./run_ranger_monitoring.sh down
+
+# Restart services
+./run_ranger_monitoring.sh restart
+
+# View logs
+./run_ranger_monitoring.sh logs -f
+```
+
+**Features of run_ranger_monitoring.sh:**
+- Automatically finds `.env` file in parent directory (`../.env`) or current directory (`.env`)
+- Creates Docker network if it doesn't exist
+- Validates required files and directories
+- Passes all arguments to docker-compose
+
+### Manual Start
+
+**If you're starting manually:**
 ```bash
 # Start observability stack
 docker-compose up -d
@@ -17,11 +46,26 @@ DOCKER_NETWORK_NAME=my-custom-network docker-compose up -d
 docker run --rm --network my-custom-network your-image
 ```
 
+## Volumes and Data Storage
+
+The docker-compose.yml uses **Docker named volumes** for data persistence:
+- `prometheus-data` - Prometheus metrics storage
+- `grafana-data` - Grafana dashboards, users, and settings
+
+**Note:** These are Docker-managed volumes, not local folders. Docker automatically creates and manages them. You don't need to create folders manually.
+
+To view volume locations:
+```bash
+docker volume ls
+docker volume inspect observability-stack_prometheus-data
+docker volume inspect observability-stack_grafana-data
+```
+
 ## Configuration
 
 ### Network Name
 
-The observability network name is configurable via the `DOCKER_NETWORK_NAME` environment variable. The default is `monitoring_observability-network`.
+The observability network name is configurable via the `DOCKER_NETWORK_NAME` environment variable. The default is `skynet`.
 
 **Option 1: Using environment variable**
 ```bash
@@ -42,6 +86,24 @@ Or create it directly:
 ```bash
 echo "DOCKER_NETWORK_NAME=my-custom-network" > .env
 docker-compose up -d
+```
+
+**Option 2b: Using .env file from parent directory**
+If your `.env` file is in the parent directory:
+
+**Using run_ranger_monitoring.sh (automatic detection):**
+```bash
+# The script automatically finds ../.env
+./run_ranger_monitoring.sh up -d
+```
+
+**Manual method:**
+```bash
+# Using relative path (from observability-stack directory)
+docker-compose --env-file ../.env up -d
+
+# Or using absolute path
+docker-compose --env-file /path/to/parent/.env up -d
 ```
 
 **Option 3: Inline with docker-compose**
@@ -69,6 +131,7 @@ DOCKER_NETWORK_NAME=my-custom-network docker-compose up -d
   - Username: `admin`
   - Password: `admin`
 - **Purpose**: Metrics visualization and dashboards
+- **Alerting**: Configured with Slack notifications - Set up via Grafana UI (Alerting → Contact points)
 
 **Editing Dashboards:**
 Dashboards are provisioned from files, which means they can be edited in the UI (with `allowUiUpdates: true`), but changes are saved to Grafana's database, not the file. To persist changes:
