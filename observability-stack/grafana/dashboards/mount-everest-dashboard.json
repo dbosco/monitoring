@@ -146,57 +146,77 @@
         {
             "datasource": "Prometheus",
             "type": "stat",
-            "title": "Ranger Admin",
+            "title": "Ranger Admin Connectivity",
             "pluginVersion": "8.0.0",
-            "gridPos": { "h": 1, "w": 4, "x": 4, "y": 0 },
-            "targets": [
-              {
-                "refId": "A",
-                "legendFormat": "Service Available",
-                "instant": true,
-                "expr": "clamp_max(sum by () (increase(ranger_api_calls_total{status=\"success\"}[5m])), 1) * (1 - clamp_max(((sum by () (increase(ranger_api_errors_total[5m]))) or on() (sum by () (increase(ranger_api_calls_total{status=\"success\"}[5m])) * 0)), 1))"
-              }
-            ],
-            "options": {
-              "colorMode": "background",
-              "graphMode": "none",
-              "justifyMode": "auto",
-              "orientation": "auto",
-              "textMode": "value",
-              "reduceOptions": {
-                "fields": "",
-                "values": false,
-                "calcs": ["lastNotNull"]
-              }
+            "gridPos": {
+                "h": 1,
+                "w": 6,
+                "x": 4,
+                "y": 0
             },
-            "fieldConfig": {
-              "defaults": {
-                "unit": "none",
-                "color": { "mode": "thresholds" },
-                "mappings": [
-                  {
-                    "type": "value",
-                    "options": {
-                      "1": { "text": "Available", "color": "green" },
-                      "0": { "text": "Failed", "color": "red" },
-                      "null": { "text": "No Data", "color": "orange" }
-                    }
-                  }
-                ],
-                "thresholds": {
-                  "mode": "absolute",
-                  "steps": [
-                    { "color": "orange", "value": null },
-                    { "color": "red", "value": 0 },
-                    { "color": "green", "value": 1 }
-                  ]
+            "options": {
+                "colorMode": "background",
+                "graphMode": "none",
+                "justifyMode": "center",
+                "orientation": "auto",
+                "textMode": "value",
+                "reduceOptions": {
+                    "fields": "",
+                    "values": false,
+                    "calcs": [
+                        "lastNotNull"
+                    ]
                 }
-              },
-              "overrides": []
+            },
+            "targets": [
+                {
+                    "refId": "A",
+                    "legendFormat": "",
+                    "instant": true,
+                    "expr": "clamp_max(   ( (sum(increase(ranger_api_calls_total{status=\"error\"}[5m])) or vector(0))   + (sum(increase(ranger_api_errors_total[5m])) or vector(0)) ),   1 )"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "mappings": [
+                        {
+                            "type": "value",
+                            "options": {
+                                "1": {
+                                    "text": "Failed",
+                                    "color": "red"
+                                },
+                                "0": {
+                                    "text": "Available",
+                                    "color": "green"
+                                },
+                                "null": {
+                                    "text": "No Data",
+                                    "color": "orange"
+                                }
+                            }
+                        }
+                    ],
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            },
+                            {
+                                "color": "red",
+                                "value": 0.5
+                            }
+                        ]
+                    }
+                }
             },
             "id": 2
-          }
-          
+        }
     ],
     "refresh": "10s",
     "schemaVersion": 27,

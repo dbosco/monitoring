@@ -68,11 +68,21 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
      * @param potentialFailure true if null result was detected (indicates suppressed failure)
      */
     private void updateApiMetrics(String methodName, long durationMs, Exception exception, boolean potentialFailure) {
-        // Consider it an error if there's an exception OR if there's a potential failure (null result)
-        String status = (exception != null || potentialFailure) ? "error" : "success";
+        // Determine status: "error" for exceptions, "unknown" for potential failures (null results), "success" otherwise
+        String status;
+        if (exception != null) {
+            status = "error";
+        } else if (potentialFailure) {
+            status = "unknown";
+        } else {
+            status = "success";
+        }
+        
         metrics.getRangerApiCallsTotal().labels(methodName, status).inc();
         metrics.getRangerApiDurationMs().labels(methodName).observe(durationMs);
-        if (exception != null || potentialFailure) {
+        
+        // Only increment error counter for actual exceptions, not for unknown states
+        if (exception != null) {
             metrics.getRangerApiErrorsTotal().labels(methodName).inc();
         }
     }
