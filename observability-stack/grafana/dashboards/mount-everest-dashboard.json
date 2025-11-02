@@ -25,7 +25,7 @@
             "pluginVersion": "8.0.0",
             "gridPos": {
                 "h": 1,
-                "w": 4,
+                "w": 5,
                 "x": 0,
                 "y": 0
             },
@@ -141,6 +141,16 @@
                 },
                 "overrides": []
             },
+            "links": [
+                {
+                    "title": "Drill down to Ranger Monitoring",
+                    "type": "link",
+                    "icon": "external link",
+                    "tooltip": "Click to view detailed Ranger monitoring dashboard",
+                    "url": "/d/ranger-monitoring?${__url.timeRange}",
+                    "targetBlank": false
+                }
+            ],
             "id": 1
         },
         {
@@ -150,8 +160,8 @@
             "pluginVersion": "8.0.0",
             "gridPos": {
                 "h": 1,
-                "w": 6,
-                "x": 4,
+                "w": 7,
+                "x": 5,
                 "y": 0
             },
             "options": {
@@ -215,6 +225,16 @@
                     }
                 }
             },
+            "links": [
+                {
+                    "title": "Drill down to Ranger Monitoring",
+                    "type": "link",
+                    "icon": "external link",
+                    "tooltip": "Click to view detailed Ranger monitoring dashboard",
+                    "url": "/d/ranger-monitoring?${__url.timeRange}",
+                    "targetBlank": false
+                }
+            ],
             "id": 2
         }
     ],
