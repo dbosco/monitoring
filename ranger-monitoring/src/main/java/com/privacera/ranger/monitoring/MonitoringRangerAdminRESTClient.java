@@ -56,13 +56,46 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
      * Helper method to update Prometheus metrics for API calls.
      */
     private void updateApiMetrics(String methodName, long durationMs, Exception exception) {
-        String status = exception == null ? "success" : "error";
+        updateApiMetrics(methodName, durationMs, exception, false);
+    }
+    
+    /**
+     * Helper method to update Prometheus metrics for API calls.
+     * 
+     * @param methodName Name of the method
+     * @param durationMs Duration in milliseconds
+     * @param exception Exception if any was thrown
+     * @param potentialFailure true if null result was detected (indicates suppressed failure)
+     */
+    private void updateApiMetrics(String methodName, long durationMs, Exception exception, boolean potentialFailure) {
+        // Consider it an error if there's an exception OR if there's a potential failure (null result)
+        String status = (exception != null || potentialFailure) ? "error" : "success";
         metrics.getRangerApiCallsTotal().labels(methodName, status).inc();
         metrics.getRangerApiDurationMs().labels(methodName).observe(durationMs);
-        if (exception != null) {
+        if (exception != null || potentialFailure) {
             metrics.getRangerApiErrorsTotal().labels(methodName).inc();
         }
     }
+    
+    /**
+     * Generic helper to detect and handle null results that may indicate suppressed failures.
+     * The parent class methods can return null without throwing exceptions in failure scenarios.
+     * 
+     * @param result The result object that may be null
+     * @param methodName Name of the method being monitored
+     * @param contextParam Context information for logging (e.g., username, emailAddress)
+     * @return true if result is null (potential failure), false otherwise
+     */
+    private boolean detectNullResult(Object result, String methodName, String contextParam) {
+        if (result == null) {
+            String context = contextParam != null ? " for " + contextParam : "";
+            LOG.warn("[RANGER_API_WARNING] " + methodName + " returned null" + context + 
+                    " - This could indicate a suppressed failure or valid 'not found' scenario");
+            return true;
+        }
+        return false;
+    }
+    
     
     /**
      * Override getServicePoliciesIfUpdated to intercept policy download calls.
@@ -83,11 +116,11 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
             throw e;
         } finally {
             long duration = System.currentTimeMillis() - startTime;
-            logApiResponse(methodName, duration, exception == null, 
-                "hasPolicies=" + (result != null));
-            
-            // Update Prometheus metrics
-            updateApiMetrics(methodName, duration, exception);
+            boolean potentialFailure = detectNullResult(result, methodName, "version=" + lastKnownVersion);
+            boolean success = exception == null && !potentialFailure;
+            logApiResponse(methodName, duration, success, 
+                "hasPolicies=" + (result != null) + (potentialFailure ? " | nullResult=true" : ""));
+            updateApiMetrics(methodName, duration, exception, potentialFailure);
         }
     }
     
@@ -109,11 +142,11 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
             throw e;
         } finally {
             long duration = System.currentTimeMillis() - startTime;
-            logApiResponse(methodName, duration, exception == null,
-                "hasTags=" + (result != null));
-            
-            // Update Prometheus metrics
-            updateApiMetrics(methodName, duration, exception);
+            boolean potentialFailure = detectNullResult(result, methodName, "version=" + lastKnownVersion);
+            boolean success = exception == null && !potentialFailure;
+            logApiResponse(methodName, duration, success,
+                "hasTags=" + (result != null) + (potentialFailure ? " | nullResult=true" : ""));
+            updateApiMetrics(methodName, duration, exception, potentialFailure);
         }
     }
     
@@ -135,11 +168,11 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
             throw e;
         } finally {
             long duration = System.currentTimeMillis() - startTime;
-            logApiResponse(methodName, duration, exception == null,
-                "hasRoles=" + (result != null));
-            
-            // Update Prometheus metrics
-            updateApiMetrics(methodName, duration, exception);
+            boolean potentialFailure = detectNullResult(result, methodName, "version=" + lastKnownRoleVersion);
+            boolean success = exception == null && !potentialFailure;
+            logApiResponse(methodName, duration, success,
+                "hasRoles=" + (result != null) + (potentialFailure ? " | nullResult=true" : ""));
+            updateApiMetrics(methodName, duration, exception, potentialFailure);
         }
     }
     
@@ -161,9 +194,11 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
             throw e;
         } finally {
             long duration = System.currentTimeMillis() - startTime;
-            logApiResponse(methodName, duration, exception == null,
-                "hasUserStore=" + (result != null));
-            updateApiMetrics(methodName, duration, exception);
+            boolean potentialFailure = detectNullResult(result, methodName, "version=" + lastKnownUserStoreVersion);
+            boolean success = exception == null && !potentialFailure;
+            logApiResponse(methodName, duration, success,
+                "hasUserStore=" + (result != null) + (potentialFailure ? " | nullResult=true" : ""));
+            updateApiMetrics(methodName, duration, exception, potentialFailure);
         }
     }
     
@@ -185,9 +220,11 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
             throw e;
         } finally {
             long duration = System.currentTimeMillis() - startTime;
-            logApiResponse(methodName, duration, exception == null,
-                "hasGdsInfo=" + (result != null));
-            updateApiMetrics(methodName, duration, exception);
+            boolean potentialFailure = detectNullResult(result, methodName, "version=" + lastKnownVersion);
+            boolean success = exception == null && !potentialFailure;
+            logApiResponse(methodName, duration, success,
+                "hasGdsInfo=" + (result != null) + (potentialFailure ? " | nullResult=true" : ""));
+            updateApiMetrics(methodName, duration, exception, potentialFailure);
         }
     }
     
@@ -209,8 +246,11 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
             throw e;
         } finally {
             long duration = System.currentTimeMillis() - startTime;
-            logApiResponse(methodName, duration, exception == null, null);
-            updateApiMetrics(methodName, duration, exception);
+            boolean potentialFailure = detectNullResult(result, methodName, "roleName=" + (request != null ? request.getName() : "null"));
+            boolean success = exception == null && !potentialFailure;
+            logApiResponse(methodName, duration, success, 
+                (potentialFailure ? "nullResult=true" : null));
+            updateApiMetrics(methodName, duration, exception, potentialFailure);
         }
     }
     
@@ -253,9 +293,12 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
             throw e;
         } finally {
             long duration = System.currentTimeMillis() - startTime;
-            logApiResponse(methodName, duration, exception == null,
-                "rolesCount=" + (result != null ? result.size() : 0));
-            updateApiMetrics(methodName, duration, exception);
+            boolean potentialFailure = detectNullResult(result, methodName, "execUser=" + execUser);
+            boolean success = exception == null && !potentialFailure;
+            String sizeInfo = result != null ? String.valueOf(result.size()) : "0";
+            logApiResponse(methodName, duration, success,
+                "rolesCount=" + sizeInfo + (potentialFailure ? " | nullResult=true" : ""));
+            updateApiMetrics(methodName, duration, exception, potentialFailure);
         }
     }
     
@@ -277,9 +320,12 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
             throw e;
         } finally {
             long duration = System.currentTimeMillis() - startTime;
-            logApiResponse(methodName, duration, exception == null,
-                "rolesCount=" + (result != null ? result.size() : 0));
-            updateApiMetrics(methodName, duration, exception);
+            boolean potentialFailure = detectNullResult(result, methodName, "execUser=" + execUser);
+            boolean success = exception == null && !potentialFailure;
+            String sizeInfo = result != null ? String.valueOf(result.size()) : "0";
+            logApiResponse(methodName, duration, success,
+                "rolesCount=" + sizeInfo + (potentialFailure ? " | nullResult=true" : ""));
+            updateApiMetrics(methodName, duration, exception, potentialFailure);
         }
     }
     
@@ -301,8 +347,11 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
             throw e;
         } finally {
             long duration = System.currentTimeMillis() - startTime;
-            logApiResponse(methodName, duration, exception == null, "hasRole=" + (result != null));
-            updateApiMetrics(methodName, duration, exception);
+            boolean potentialFailure = detectNullResult(result, methodName, "roleName=" + roleName + ", execUser=" + execUser);
+            boolean success = exception == null && !potentialFailure;
+            logApiResponse(methodName, duration, success, 
+                "hasRole=" + (result != null) + (potentialFailure ? " | nullResult=true" : ""));
+            updateApiMetrics(methodName, duration, exception, potentialFailure);
         }
     }
     
@@ -408,14 +457,19 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
             throw e;
         } finally {
             long duration = System.currentTimeMillis() - startTime;
-            logApiResponse(methodName, duration, exception == null,
-                "tagTypesCount=" + (result != null ? result.size() : 0));
-            updateApiMetrics(methodName, duration, exception);
+            boolean potentialFailure = detectNullResult(result, methodName, "pattern=" + pattern);
+            boolean success = exception == null && !potentialFailure;
+            String sizeInfo = result != null ? String.valueOf(result.size()) : "0";
+            logApiResponse(methodName, duration, success,
+                "tagTypesCount=" + sizeInfo + (potentialFailure ? " | nullResult=true" : ""));
+            updateApiMetrics(methodName, duration, exception, potentialFailure);
         }
     }
     
     /**
      * Override getGroups to intercept group retrieval calls.
+     * Note: The parent method can return null without throwing an exception when
+     * max retries are exceeded or other failures occur.
      */
     @Override
     public List<Map<String, Object>> getGroups() throws Exception {
@@ -432,14 +486,19 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
             throw e;
         } finally {
             long duration = System.currentTimeMillis() - startTime;
-            logApiResponse(methodName, duration, exception == null,
-                "groupsCount=" + (result != null ? result.size() : 0));
-            updateApiMetrics(methodName, duration, exception);
+            boolean potentialFailure = detectNullResult(result, methodName, null);
+            boolean success = exception == null && !potentialFailure;
+            String sizeInfo = result != null ? String.valueOf(result.size()) : "0";
+            logApiResponse(methodName, duration, success,
+                "groupsCount=" + sizeInfo + (potentialFailure ? " | nullResult=true" : ""));
+            updateApiMetrics(methodName, duration, exception, potentialFailure);
         }
     }
     
     /**
      * Override getUsersByGroup to intercept user-by-group retrieval calls.
+     * Note: The parent method can return null without throwing an exception when
+     * max retries are exceeded or other failures occur.
      */
     @Override
     public List<Map<String, Object>> getUsersByGroup(String groupName) throws Exception {
@@ -456,14 +515,38 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
             throw e;
         } finally {
             long duration = System.currentTimeMillis() - startTime;
-            logApiResponse(methodName, duration, exception == null,
-                "usersCount=" + (result != null ? result.size() : 0));
-            updateApiMetrics(methodName, duration, exception);
+            boolean potentialFailure = detectNullResult(result, methodName, "groupName: " + groupName);
+            boolean success = exception == null && !potentialFailure;
+            String sizeInfo = result != null ? String.valueOf(result.size()) : "0";
+            logApiResponse(methodName, duration, success,
+                "usersCount=" + sizeInfo + (potentialFailure ? " | nullResult=true" : ""));
+            updateApiMetrics(methodName, duration, exception, potentialFailure);
         }
     }
     
     /**
      * Override getGroupsForUser to intercept groups-for-user retrieval calls.
+     * 
+     * CRITICAL: The parent method suppresses exceptions and returns null in several failure scenarios:
+     * 
+     * 1. Exception swallowed after max retries (catch block): When max retries are exceeded during
+     *    exception handling, the exception is only logged but NOT thrown, returning null instead.
+     * 
+     * 2. Silent failure after retry loop: When retries == maxSearchRetries but retry flag is false
+     *    (or response is null), only logs warning and returns null without throwing.
+     * 
+     * 3. HTTP 400 (Bad Request): All 400 responses return null without exception. While "user not found"
+     *    is acceptable, other 400 errors (malformed requests, validation failures) are also silently ignored.
+     * 
+     * 4. Connection errors: After all retries exhausted, connection exceptions are caught and swallowed,
+     *    returning null instead of propagating the failure.
+     * 
+     * This wrapper detects all null results as potential failures and:
+     * - Logs warnings for visibility
+     * - Increments error metrics for monitoring
+     * - Marks the call as failed in success tracking
+     * Note: We cannot distinguish between "user not found" (valid null) vs "request failure" (invalid null),
+     * so all nulls are treated as potential failures for monitoring purposes.
      */
     @Override
     public List<Map<String, Object>> getGroupsForUser(String username) throws Exception {
@@ -480,14 +563,19 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
             throw e;
         } finally {
             long duration = System.currentTimeMillis() - startTime;
-            logApiResponse(methodName, duration, exception == null,
-                "groupsCount=" + (result != null ? result.size() : 0));
-            updateApiMetrics(methodName, duration, exception);
+            boolean potentialFailure = detectNullResult(result, methodName, "username: " + username);
+            boolean success = exception == null && !potentialFailure;
+            String sizeInfo = result != null ? String.valueOf(result.size()) : "0";
+            logApiResponse(methodName, duration, success,
+                "groupsCount=" + sizeInfo + (potentialFailure ? " | nullResult=true" : ""));
+            updateApiMetrics(methodName, duration, exception, potentialFailure);
         }
     }
     
     /**
      * Override getUserInfoByEmailAddress to intercept user info retrieval calls.
+     * Note: The parent method can return null without throwing an exception when
+     * max retries are exceeded or other failures occur.
      */
     @Override
     public HashMap<String, Object> getUserInfoByEmailAddress(String emailAddress) throws Exception {
@@ -504,9 +592,11 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
             throw e;
         } finally {
             long duration = System.currentTimeMillis() - startTime;
-            logApiResponse(methodName, duration, exception == null,
-                "hasUserInfo=" + (result != null));
-            updateApiMetrics(methodName, duration, exception);
+            boolean potentialFailure = detectNullResult(result, methodName, "emailAddress: " + emailAddress);
+            boolean success = exception == null && !potentialFailure;
+            logApiResponse(methodName, duration, success,
+                "hasUserInfo=" + (result != null) + (potentialFailure ? " | nullResult=true" : ""));
+            updateApiMetrics(methodName, duration, exception, potentialFailure);
         }
     }
     
@@ -528,9 +618,12 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
             throw e;
         } finally {
             long duration = System.currentTimeMillis() - startTime;
-            logApiResponse(methodName, duration, exception == null,
-                "attributesCount=" + (result != null ? result.size() : 0));
-            updateApiMetrics(methodName, duration, exception);
+            boolean potentialFailure = detectNullResult(result, methodName, "userName=" + userName);
+            boolean success = exception == null && !potentialFailure;
+            String sizeInfo = result != null ? String.valueOf(result.size()) : "0";
+            logApiResponse(methodName, duration, success,
+                "attributesCount=" + sizeInfo + (potentialFailure ? " | nullResult=true" : ""));
+            updateApiMetrics(methodName, duration, exception, potentialFailure);
         }
     }
     
@@ -552,9 +645,12 @@ public class MonitoringRangerAdminRESTClient extends RangerAdminRESTClient {
             throw e;
         } finally {
             long duration = System.currentTimeMillis() - startTime;
-            logApiResponse(methodName, duration, exception == null,
-                "usersCount=" + (result != null ? result.size() : 0));
-            updateApiMetrics(methodName, duration, exception);
+            boolean potentialFailure = detectNullResult(result, methodName, null);
+            boolean success = exception == null && !potentialFailure;
+            String sizeInfo = result != null ? String.valueOf(result.size()) : "0";
+            logApiResponse(methodName, duration, success,
+                "usersCount=" + sizeInfo + (potentialFailure ? " | nullResult=true" : ""));
+            updateApiMetrics(methodName, duration, exception, potentialFailure);
         }
     }
 }
