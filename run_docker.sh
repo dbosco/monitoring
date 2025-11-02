@@ -33,6 +33,14 @@ print_error() {
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$SCRIPT_DIR/ranger-monitoring"
 
+# Default Ranger deployment path (can be overridden with --deployment-path or RANGER_DEPLOYMENT_PATH env var)
+# Expand to absolute path if it exists
+if [ -n "$RANGER_DEPLOYMENT_PATH" ] && [ -d "$RANGER_DEPLOYMENT_PATH" ]; then
+    RANGER_DEPLOYMENT_PATH="$(cd "$RANGER_DEPLOYMENT_PATH" && pwd)"
+elif [ -z "$RANGER_DEPLOYMENT_PATH" ]; then
+    RANGER_DEPLOYMENT_PATH="$PROJECT_DIR/dont_commit_ranger_pkg"
+fi
+
 # Check if Docker is available
 check_docker() {
     if ! command -v docker &> /dev/null; then
@@ -107,7 +115,40 @@ run_maven() {
 
 # Run with Docker directly
 run_with_docker() {
-    print_info "Running with Docker directly..."
+    local shell_mode=false
+    local java_args=()
+    
+    # Parse arguments for run-direct
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --shell)
+                shell_mode=true
+                shift
+                ;;
+            *)
+                java_args+=("$1")
+                shift
+                ;;
+        esac
+    done
+    
+    if [ "$shell_mode" = true ]; then
+        print_info "Starting container with shell..."
+    else
+        print_info "Running with Docker directly..."
+    fi
+    print_info "Using Ranger deployment path: $RANGER_DEPLOYMENT_PATH"
+    
+    # Validate deployment path
+    if [ ! -d "$RANGER_DEPLOYMENT_PATH" ]; then
+        print_error "Ranger deployment directory not found: $RANGER_DEPLOYMENT_PATH"
+        exit 1
+    fi
+    
+    if [ ! -d "$RANGER_DEPLOYMENT_PATH/ranger-conf" ]; then
+        print_error "ranger-conf directory not found in deployment path: $RANGER_DEPLOYMENT_PATH/ranger-conf"
+        exit 1
+    fi
     
     # Ensure network exists
     ensure_network
@@ -120,43 +161,53 @@ run_with_docker() {
         build_runtime_image
     fi
     
-    # Check if lib directory exists
-    if [ ! -d "$PROJECT_DIR/dont_commit_ranger_pkg/lib" ]; then
-        print_error "Ranger lib directory not found: $PROJECT_DIR/dont_commit_ranger_pkg/lib"
-        exit 1
-    fi
-    
-    # Build classpath
-    CLASSPATH="/app/target/classes:/app/dont_commit_ranger_pkg/ranger-conf"
-    
-    # Add all JAR files from Ranger lib directory
-    for jar in dont_commit_ranger_pkg/lib/*.jar; do
-        if [ -f "$jar" ]; then
-            CLASSPATH="$CLASSPATH:/app/dont_commit_ranger_pkg/lib/$(basename "$jar")"
-        fi
-    done
+    # Build classpath (libraries are now in /app/lib from the image)
+    CLASSPATH="/app/classes:/app/ranger-conf:/app/lib/*"
     
     # Get network name
     local network_name="${DOCKER_NETWORK_NAME:-skynet}"
     
-    # Create logs directory if it doesn't exist and set permissions for ranger-monitoring user (UID 1000)
-    mkdir -p "$PROJECT_DIR/logs"
-    chmod 755 "$PROJECT_DIR/logs" 2>/dev/null || true
+    # Ensure logs directory exists in deployment path
+    local logs_dir="$RANGER_DEPLOYMENT_PATH/logs"
+    mkdir -p "$logs_dir"
+    chmod 755 "$logs_dir" 2>/dev/null || true
     
-    docker run --rm \
-        --network "${network_name}" \
-        --user 1000:1000 \
-        -v "$PROJECT_DIR/dont_commit_ranger_pkg/ranger-conf:/app/dont_commit_ranger_pkg/ranger-conf" \
-        -v "$PROJECT_DIR/dont_commit_ranger_pkg/lib:/app/dont_commit_ranger_pkg/lib" \
-        -v "$PROJECT_DIR/dont_commit_ranger_pkg/cache:/app/cache" \
-        -v "$PROJECT_DIR/target/classes:/app/target/classes" \
-        -v "$PROJECT_DIR/logs:/app/logs" \
-        ranger-monitoring:latest \
-        java \
-        -Djava.util.logging.config.file=/app/dont_commit_ranger_pkg/ranger-conf/logging.properties \
-        -Dranger.monitoring.logs.dir=/app/logs \
-        -cp "$CLASSPATH" \
-        com.privacera.ranger.monitoring.DummyAuthorizer "$@"
+    # Ensure cache directory exists (for policy cache)
+    local cache_dir="$RANGER_DEPLOYMENT_PATH/cache"
+    mkdir -p "$cache_dir"
+    
+    # Ensure audits directory exists
+    local audits_dir="$RANGER_DEPLOYMENT_PATH/audits"
+    mkdir -p "$audits_dir"
+    
+    # Build docker run command
+    if [ "$shell_mode" = true ]; then
+        print_info "Starting interactive shell in container..."
+        print_info "You can access mounted directories at /app/ranger-conf, /app/cache, /app/logs, /app/audits"
+        docker run --rm -it \
+            --network "${network_name}" \
+            --user 1000:1000 \
+            -v "$RANGER_DEPLOYMENT_PATH/ranger-conf:/app/ranger-conf" \
+            -v "$cache_dir:/app/cache" \
+            -v "$logs_dir:/app/logs" \
+            -v "$audits_dir:/app/audits" \
+            ranger-monitoring:latest \
+            /bin/bash
+    else
+        docker run --rm \
+            --network "${network_name}" \
+            --user 1000:1000 \
+            -v "$RANGER_DEPLOYMENT_PATH/ranger-conf:/app/ranger-conf" \
+            -v "$cache_dir:/app/cache" \
+            -v "$logs_dir:/app/logs" \
+            -v "$audits_dir:/app/audits" \
+            ranger-monitoring:latest \
+            java \
+            -Dlog4j.configuration=file:/app/ranger-conf/log4j.properties \
+            -Dranger.monitoring.logs.dir=/app/logs \
+            -cp "$CLASSPATH" \
+            com.privacera.ranger.monitoring.DummyAuthorizer "${java_args[@]}"
+    fi
 }
 
 # Ensure network exists
@@ -196,8 +247,20 @@ run_monitoring() {
     done
     
     print_info "Running MonitoringRangerPlugin with Docker..."
+    print_info "Using Ranger deployment path: $RANGER_DEPLOYMENT_PATH"
     if [ "$detached" = true ]; then
         print_info "Running in detached mode (background)"
+    fi
+    
+    # Validate deployment path
+    if [ ! -d "$RANGER_DEPLOYMENT_PATH" ]; then
+        print_error "Ranger deployment directory not found: $RANGER_DEPLOYMENT_PATH"
+        exit 1
+    fi
+    
+    if [ ! -d "$RANGER_DEPLOYMENT_PATH/ranger-conf" ]; then
+        print_error "ranger-conf directory not found in deployment path: $RANGER_DEPLOYMENT_PATH/ranger-conf"
+        exit 1
     fi
     
     # Ensure network exists
@@ -211,21 +274,8 @@ run_monitoring() {
         build_runtime_image
     fi
     
-    # Check if lib directory exists
-    if [ ! -d "$PROJECT_DIR/dont_commit_ranger_pkg/lib" ]; then
-        print_error "Ranger lib directory not found: $PROJECT_DIR/dont_commit_ranger_pkg/lib"
-        exit 1
-    fi
-    
-    # Build classpath
-    CLASSPATH="/app/target/classes:/app/dont_commit_ranger_pkg/ranger-conf"
-    
-    # Add all JAR files from Ranger lib directory
-    for jar in dont_commit_ranger_pkg/lib/*.jar; do
-        if [ -f "$jar" ]; then
-            CLASSPATH="$CLASSPATH:/app/dont_commit_ranger_pkg/lib/$(basename "$jar")"
-        fi
-    done
+    # Build classpath (libraries are now in /app/lib from the image)
+    CLASSPATH="/app/classes:/app/ranger-conf:/app/lib/*"
     
     # Get network name
     local network_name="${DOCKER_NETWORK_NAME:-skynet}"
@@ -247,20 +297,28 @@ run_monitoring() {
     # Add network connection
     docker_cmd="$docker_cmd --network ${network_name}"
     
-    # Create logs directory if it doesn't exist and set permissions for ranger-monitoring user (UID 1000)
-    mkdir -p "$PROJECT_DIR/logs"
-    chmod 755 "$PROJECT_DIR/logs" 2>/dev/null || true
+    # Ensure logs directory exists in deployment path
+    local logs_dir="$RANGER_DEPLOYMENT_PATH/logs"
+    mkdir -p "$logs_dir"
+    chmod 755 "$logs_dir" 2>/dev/null || true
+    
+    # Ensure cache directory exists (for policy cache)
+    local cache_dir="$RANGER_DEPLOYMENT_PATH/cache"
+    mkdir -p "$cache_dir"
+    
+    # Ensure audits directory exists
+    local audits_dir="$RANGER_DEPLOYMENT_PATH/audits"
+    mkdir -p "$audits_dir"
     
     $docker_cmd \
         --user 1000:1000 \
-        -v "$PROJECT_DIR/dont_commit_ranger_pkg/ranger-conf:/app/dont_commit_ranger_pkg/ranger-conf" \
-        -v "$PROJECT_DIR/dont_commit_ranger_pkg/lib:/app/dont_commit_ranger_pkg/lib" \
-        -v "$PROJECT_DIR/dont_commit_ranger_pkg/cache:/app/cache" \
-        -v "$PROJECT_DIR/target/classes:/app/target/classes" \
-        -v "$PROJECT_DIR/logs:/app/logs" \
+        -v "$RANGER_DEPLOYMENT_PATH/ranger-conf:/app/ranger-conf" \
+        -v "$cache_dir:/app/cache" \
+        -v "$logs_dir:/app/logs" \
+        -v "$audits_dir:/app/audits" \
         ranger-monitoring:latest \
         java \
-        -Djava.util.logging.config.file=/app/dont_commit_ranger_pkg/ranger-conf/logging.properties \
+        -Dlog4j.configuration=file:/app/ranger-conf/log4j.properties \
         -Dranger.monitoring.logs.dir=/app/logs \
         -cp "$CLASSPATH" \
         com.privacera.ranger.monitoring.MonitoringRangerPlugin "${java_args[@]}"
@@ -269,10 +327,69 @@ run_monitoring() {
         print_success "MonitoringRangerPlugin started in detached mode"
         print_info "Container name: ranger-monitoring-app"
         print_info "Network: ${network_name}"
+        print_info "Deployment path: $RANGER_DEPLOYMENT_PATH"
         print_info "Use 'docker ps' to see running containers"
         print_info "Use 'docker logs ranger-monitoring-app' to view logs"
         print_info "Use 'docker stop ranger-monitoring-app' to stop the container"
     fi
+}
+
+# Run shell with Docker (same mounts as run-direct/run-monitoring)
+run_shell() {
+    print_info "Starting container with shell..."
+    print_info "Using Ranger deployment path: $RANGER_DEPLOYMENT_PATH"
+    
+    # Validate deployment path
+    if [ ! -d "$RANGER_DEPLOYMENT_PATH" ]; then
+        print_error "Ranger deployment directory not found: $RANGER_DEPLOYMENT_PATH"
+        exit 1
+    fi
+    
+    if [ ! -d "$RANGER_DEPLOYMENT_PATH/ranger-conf" ]; then
+        print_error "ranger-conf directory not found in deployment path: $RANGER_DEPLOYMENT_PATH/ranger-conf"
+        exit 1
+    fi
+    
+    # Ensure network exists
+    ensure_network
+    
+    cd "$PROJECT_DIR"
+    
+    # Check if runtime image exists
+    if ! docker image inspect ranger-monitoring:latest &> /dev/null; then
+        print_warning "Runtime image not found. Building it now..."
+        build_runtime_image
+    fi
+    
+    # Get network name
+    local network_name="${DOCKER_NETWORK_NAME:-skynet}"
+    
+    # Ensure logs directory exists in deployment path
+    local logs_dir="$RANGER_DEPLOYMENT_PATH/logs"
+    mkdir -p "$logs_dir"
+    chmod 755 "$logs_dir" 2>/dev/null || true
+    
+    # Ensure cache directory exists (for policy cache)
+    local cache_dir="$RANGER_DEPLOYMENT_PATH/cache"
+    mkdir -p "$cache_dir"
+    
+    # Ensure audits directory exists
+    local audits_dir="$RANGER_DEPLOYMENT_PATH/audits"
+    mkdir -p "$audits_dir"
+    
+    print_info "Starting interactive shell in container..."
+    print_info "Deployment path: $RANGER_DEPLOYMENT_PATH"
+    print_info "You can access mounted directories at /app/ranger-conf, /app/cache, /app/logs, /app/audits"
+    
+    docker run --rm -it \
+        --network "${network_name}" \
+        --user 1000:1000 \
+        -v "$RANGER_DEPLOYMENT_PATH/ranger-conf:/app/ranger-conf" \
+        -v "$cache_dir:/app/cache" \
+        -v "$logs_dir:/app/logs" \
+        -v "$audits_dir:/app/audits" \
+        ranger-monitoring:latest \
+        /bin/bash
 }
 
 # Run tests with Docker
@@ -313,14 +430,23 @@ show_usage() {
     echo "  test            Run tests"
     echo "  package         Build the application package"
     echo "  maven CMD       Run custom Maven command"
-    echo "  run-direct      Run DummyAuthorizer with Docker directly"
+    echo "  run-direct      Run DummyAuthorizer with Docker directly (supports --shell flag)"
     echo "  run-monitoring  Run MonitoringRangerPlugin (supports -d/--detached and --interval flags)"
     echo "  cleanup         Clean up Docker resources"
-    echo "  shell           Open shell in running container"
+    echo "  shell           Open shell in container (execs into running container or starts new one with same mounts)"
     echo ""
     echo "Options:"
+    echo "  --deployment-path PATH  Path to Ranger deployment folder (default: ranger-monitoring/dont_commit_ranger_pkg)"
+    echo "                          This folder should contain:"
+    echo "                          - ranger-conf/ (with logging.properties)"
+    echo "                          - logs/ (for log output)"
+    echo "                          - cache/ (for policy cache)"
+    echo "                          - audits/ (for audit logs)"
     echo "  --verbose       Enable verbose output"
     echo "  --help          Show this help message"
+    echo ""
+    echo "Environment Variables:"
+    echo "  RANGER_DEPLOYMENT_PATH   Path to Ranger deployment folder (overridden by --deployment-path)"
     echo ""
     echo "Examples:"
     echo "  $0 build                    # Build Docker builder image"
@@ -328,11 +454,13 @@ show_usage() {
     echo "  $0 compile                  # Compile application"
     echo "  $0 test                     # Run tests"
     echo "  $0 maven clean package -DskipTests  # Custom Maven command"
-    echo "  $0 run-direct               # Run DummyAuthorizer with Docker directly"
-    echo "  $0 run-monitoring            # Run MonitoringRangerPlugin with default 60s interval"
-    echo "  $0 run-monitoring --interval 30  # Run MonitoringRangerPlugin with 30s interval"
+    echo "  $0 --deployment-path /path/to/deployment run-direct  # Run with specific deployment"
+    echo "  $0 run-direct --shell                 # Start container with interactive shell instead of running Java app"
+    echo "  $0 --deployment-path /path/to/deployment run-direct --shell  # Start shell with specific deployment"
+    echo "  $0 run-monitoring            # Run MonitoringRangerPlugin with default deployment"
+    echo "  $0 --deployment-path /path/to/deployment run-monitoring --interval 30  # Run with specific deployment and interval"
     echo "  $0 run-monitoring -d         # Run MonitoringRangerPlugin in detached/background mode"
-    echo "  $0 run-monitoring -d --interval 30  # Run in detached mode with 30s interval"
+    echo "  $0 --deployment-path /path/to/deployment run-monitoring -d  # Run in detached mode with specific deployment"
     echo "  $0 cleanup                   # Clean up resources"
 }
 
@@ -341,12 +469,22 @@ main() {
     local command=""
     local verbose=false
     
-    # Parse arguments
+    # Parse arguments - handle options first, then commands
     while [[ $# -gt 0 ]]; do
         case $1 in
-            build|build-runtime|compile|test|package|maven|run-direct|run-monitoring|cleanup|shell)
-                command="$1"
-                shift
+            --deployment-path)
+                if [ -z "$2" ]; then
+                    print_error "--deployment-path requires a path argument"
+                    show_usage
+                    exit 1
+                fi
+                # Expand to absolute path
+                if [ -d "$2" ]; then
+                    RANGER_DEPLOYMENT_PATH="$(cd "$2" && pwd)"
+                else
+                    RANGER_DEPLOYMENT_PATH="$2"
+                fi
+                shift 2
                 ;;
             --verbose)
                 verbose=true
@@ -356,14 +494,29 @@ main() {
                 show_usage
                 exit 0
                 ;;
-            *)
-                # For run-monitoring, collect remaining args
-                if [ "$command" = "run-monitoring" ]; then
+            build|build-runtime|compile|test|package|maven|run-direct|run-monitoring|cleanup|shell)
+                command="$1"
+                shift
+                # For run-direct and run-monitoring, collect remaining args
+                if [ "$command" = "run-direct" ] || [ "$command" = "run-monitoring" ]; then
                     break
                 fi
-                print_error "Unknown option: $1"
-                show_usage
-                exit 1
+                ;;
+            *)
+                # Check if it might be a command we haven't seen yet (before setting command)
+                if [ -z "$command" ]; then
+                    print_error "Unknown option or command: $1"
+                    show_usage
+                    exit 1
+                else
+                    # Unknown option after command - for run-direct and run-monitoring, pass through
+                    if [ "$command" = "run-direct" ] || [ "$command" = "run-monitoring" ]; then
+                        break
+                    fi
+                    print_error "Unknown option: $1"
+                    show_usage
+                    exit 1
+                fi
                 ;;
         esac
     done
@@ -392,6 +545,7 @@ main() {
             ;;
         package)
             run_maven "clean package"
+            run_maven "dependency:copy-dependencies -DincludeScope=compile"
             ;;
         maven)
             shift # Remove "maven" from arguments
@@ -407,8 +561,14 @@ main() {
             cleanup
             ;;
         shell)
-            print_info "Opening shell in running container..."
-            docker exec -it ranger-monitoring-app /bin/bash
+            # Try to exec into running container first, otherwise start a new one
+            if docker ps --format '{{.Names}}' | grep -qE '^ranger-monitoring-app$'; then
+                print_info "Opening shell in running container..."
+                docker exec -it ranger-monitoring-app /bin/bash
+            else
+                print_warning "No running container found. Starting new container with shell..."
+                run_shell
+            fi
             ;;
         "")
             print_error "No command specified"

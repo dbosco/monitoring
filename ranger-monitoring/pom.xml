@@ -55,6 +55,28 @@
             <version>5.9.2</version>
             <scope>test</scope>
         </dependency>
+        
+        <!-- Hadoop Shaded Guava - provides org.apache.hadoop.thirdparty.com.google.common.* classes -->
+        <dependency>
+            <groupId>org.apache.hadoop.thirdparty</groupId>
+            <artifactId>hadoop-shaded-guava</artifactId>
+            <version>1.1.1</version>
+        </dependency>
+        
+        <!-- Hadoop Auth - provides org.apache.hadoop.util.PlatformName and other security utilities -->
+        <!-- Required because hadoop-common-3.3.6-jakarta is missing some classes -->
+        <dependency>
+            <groupId>org.apache.hadoop</groupId>
+            <artifactId>hadoop-auth</artifactId>
+            <version>3.3.6</version>
+        </dependency>
+        
+        <!-- Solr - required for Ranger audit provider (SolrException and other Solr classes) -->
+        <dependency>
+            <groupId>org.apache.solr</groupId>
+            <artifactId>solr-solrj</artifactId>
+            <version>8.11.2</version>
+        </dependency>
     </dependencies>
 
     <build>

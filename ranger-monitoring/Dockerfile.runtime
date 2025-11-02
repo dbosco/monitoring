@@ -1,5 +1,5 @@
 # Runtime Dockerfile for Ranger Monitoring
-# This image is minimal and expects volumes to be mounted at runtime
+# This image includes all libraries and classes baked into the image
 
 FROM eclipse-temurin:21-jre-alpine
 
@@ -9,8 +9,17 @@ RUN apk add --no-cache bash
 # Set working directory
 WORKDIR /app
 
-# Create cache directories and keystore directory
-RUN mkdir -p /app/cache/policycache /app/cache/temp-cache /app/keystore /app/logs
+# Create cache directories, keystore directory, and audits directory
+RUN mkdir -p /app/cache/policycache /app/cache/temp-cache /app/keystore /app/logs /app/audits
+
+# Create directories for libraries and classes
+RUN mkdir -p /app/classes /app/lib /app/ranger-conf
+
+# Copy compiled classes
+COPY target/classes/ /app/classes/
+
+# Copy Maven dependencies
+COPY target/dependency/ /app/lib/
 
 # Create ranger-monitoring user (non-root for security)
 RUN addgroup -S ranger-monitoring && \
@@ -30,5 +39,5 @@ USER ranger-monitoring
 #     -Dranger.temp.cache.dir=/tmp/ranger-temp-cache \
 #     -Dranger.audit.solr.urls=http://localhost:6083/solr/ranger_audits"
 
-# Default command - expects volumes to be mounted
-CMD ["java", "-cp", "/app/target/classes:/app/ranger-conf:/app/lib/*", "com.privacera.ranger.monitoring.DummyAuthorizer"]
+# Default command - uses libraries and classes from image
+CMD ["java", "-Dlog4j.configuration=file:/app/ranger-conf/log4j.properties", "-Dranger.monitoring.logs.dir=/app/logs", "-cp", "/app/classes:/app/ranger-conf:/app/lib/*", "com.privacera.ranger.monitoring.DummyAuthorizer"]

@@ -25,7 +25,7 @@ cd "$SCRIPT_DIR" || {
 
 echo "Deploying SSL Certificate Monitoring and ranger-monitoring to $REMOTE_SERVER:$REMOTE_PATH"
 echo "Working directory: $(pwd)"
-echo "Excluding: .bk files and cache/ folders from ranger-monitoring"
+echo "Excluding: .bk files, target/, logs/, audits/, cache/, and dont_commit_dont_sync/ folders"
 
 # Create rsync exclude file
 EXCLUDE_FILE="/tmp/ssl_monitor_exclude.txt"
@@ -74,7 +74,26 @@ Thumbs.db
 
 # Logs
 logs/
+**/logs/
 *.log
+
+# Build artifacts
+target/
+**/target/
+
+# Audit logs
+audits/
+**/audits/
+
+# Cache directories
+cache/
+**/cache/
+ranger-monitoring/**/cache
+ranger-monitoring/**/cache/
+
+# Dont commit/sync folders
+dont_commit_dont_sync/
+**/dont_commit_dont_sync/
 
 # Temporary files
 *.tmp
@@ -86,12 +105,6 @@ logs/
 *.backup
 *.bk
 **/*.bk
-
-# Ranger monitoring specific exclusions
-ranger-monitoring/**/cache
-ranger-monitoring/**/cache/
-**/cache
-**/cache/
 EOF
 
 echo "Created exclude file: $EXCLUDE_FILE"

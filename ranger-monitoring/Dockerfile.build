@@ -18,7 +18,7 @@ RUN mkdir -p target
 
 # Set environment variables
 ENV JAVA_HOME="/opt/java/openjdk"
-ENV MVN_GOALS="clean package"
+ENV MVN_GOALS="clean package dependency:copy-dependencies -DincludeScope=compile"
 ENV MVN_OPTS=""
 
 # Default command - can be overridden
